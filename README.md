@@ -1,1 +1,1 @@
-# lift-coach
+# motion-detective
