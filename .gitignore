@@ -1,0 +1,32 @@
+# Environment
+.env
+.env.local
+
+# Python
+.venv/
+myenv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# macOS
+.DS_Store
+
+# Models (large binary files — download separately)
+models/*.pt
+models/*.task
+
+# Output videos
+output/
+
+# JetBrains / VSCode
+.idea/
+.vscode/
