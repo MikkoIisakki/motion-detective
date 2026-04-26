@@ -1,37 +1,70 @@
 # motion-detective
 
-`motion-detective` now includes a weightlifter detection baseline that:
-- validates an input video,
-- detects the primary weightlifter each frame (YOLO if configured, otherwise HOG + motion fallback),
-- writes an output video with a weightlifter bounding box overlay.
+A gym-ready app where you record a lift, get an annotated video, and receive actionable technique feedback.
 
-## Run
+Current capability:
+- validates an input video
+- detects the primary weightlifter each frame (YOLO pose model, HOG + motion fallback)
+- renders bounding box, pose skeleton, and joint angle overlays
 
-```bash
-cd motion-detective
-./myenv/bin/python main.py data/sample_video.mp4 --output output/weightlifter_detected.mp4
-```
-
-YOLO backend:
+## Setup
 
 ```bash
 cd motion-detective
-./myenv/bin/python main.py data/sample_video.mp4 --backend yolo --yolo-model yolov8n-pose.pt --output output/weightlifter_detected.mp4
+uv sync
 ```
+
+## CLI
+
+```bash
+uv run python main.py --help                          # top-level help
+uv run python main.py <command> --help                # per-command help
+```
+
+### Commands
+
+| Command | Purpose |
+|---|---|
+| `analyze <video>` | Run full pipeline (detect, pose, phase, faults, render) |
+| `lifts` | List supported lifts in the knowledge base |
+| `phases <lift>` | List phases defined for a given lift |
+| `rules <lift> <phase>` | Show fault thresholds and feedback cues |
+| `validate <video>` | Check the video file is openable and well-formed |
+
+### Examples
+
+```bash
+uv run python main.py analyze data/sample_video_side.mp4 --output output/side_annotated.mp4 --lift snatch
+uv run python main.py lifts
+uv run python main.py phases snatch
+uv run python main.py rules snatch first_pull
+uv run python main.py validate data/sample_video_side.mp4
+```
+
+Optional flags for `analyze`:
+- `--yolo-model` — YOLO model path (default: `yolov8n-pose.pt`)
+- `--knowledge-base` — fault rules YAML (default: `config/knowledge_base.yml`)
 
 ## How it works
 
-- `src/input_validator.py`: file/path/mime/video validation.
-- `src/weightlifter_detector.py`: weightlifter detection + video rendering.
-- `main.py`: CLI entrypoint.
+```
+src/
+  domain/        # pure value objects and angle math — no CV dependencies
+  ports/         # abstract interfaces (DetectorPort, PoseEstimatorPort, etc.)
+  adapters/      # cv2 / YOLO / file I/O implementations
+  use_cases/     # AnalyzeVideo — orchestrates the pipeline
+main.py          # CLI entrypoint
+```
 
-Current assumptions (good for MVP):
-- mostly static camera.
-- single primary person in frame.
+Pipeline: validate → detect lifter → estimate pose → render overlay → write frame
+
+Current assumptions:
+- mostly static camera
+- single primary person in frame
 
 ## Tests
 
 ```bash
-cd motion-detective
-./myenv/bin/python -m pytest -q
+uv run pytest -q                        # unit tests (fast, no video files needed)
+uv run pytest -q -m integration        # integration tests (require real video files)
 ```

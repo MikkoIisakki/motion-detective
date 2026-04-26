@@ -23,9 +23,16 @@ coverage.xml
 # Models (large binary files — download separately)
 models/*.pt
 models/*.task
+yolov8n-pose.pt
+
+# Sample input videos (large; not committed)
+data/
 
 # Output videos
 output/
+
+# Scratch / experimental files
+.temp
 
 # JetBrains / VSCode
 .idea/

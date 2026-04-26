@@ -70,6 +70,7 @@ Step 6 — product-manager
 
 Adapt the flow: skip steps that genuinely don't apply.
 
+<!--
 ## Phase Gates
 
 | Phase | Content |
@@ -80,6 +81,7 @@ Adapt the flow: skip steps that genuinely don't apply.
 | **Phase 4** — Polish | Real-time analysis, coaching subscriptions, social/sharing |
 
 Do not route work that belongs to a future phase. If a task spans phases, split it.
+-->
 
 ## Conflict Resolution
 

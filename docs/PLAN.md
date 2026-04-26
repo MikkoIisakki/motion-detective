@@ -2,8 +2,8 @@
 
 **Vision**: a gym-ready app where you record a lift, get an annotated video, and receive actionable technique feedback.
 
-**Current date**: 2026-04-08  
-**Current phase**: Phase 0 — Visual Proof of Core CV Loop
+**Current date**: 2026-04-25
+**Current phase**: Phase 2 — Technique Rules and Feedback (in progress)
 
 ---
 
@@ -15,11 +15,11 @@ Goal: verify with your own eyes that lifter detection and angle overlay work on 
 
 | # | Task | Status | Notes |
 |---|---|---|---|
-| 0.1 | Select 2–3 representative lift videos (side/front) | ⬜ Todo | Use one clean sample + one noisy gym sample |
-| 0.2 | Run lifter detection pipeline and render bounding-box output | ⬜ Todo | Confirm primary lifter stays tracked through full lift |
-| 0.3 | Render pose skeleton + joint angle overlays (hip, knee, ankle, torso, elbow) | ⬜ Todo | Frame-by-frame visual sanity check |
-| 0.4 | Save side-by-side output clips for review | ⬜ Todo | Original vs annotated |
-| 0.5 | Write quick findings note: what works / fails | ⬜ Todo | Detection dropouts, bad keypoints, angle jitter |
+| 0.1 | Select 2–3 representative lift videos (side/front) | ✅ Done | `data/sample_video_side.mp4`, `data/sample_video_front.mp4` |
+| 0.2 | Run lifter detection pipeline and render bounding-box output | ✅ Done | YOLO+HOG+motion fallback with temporal tracking; bounding box later removed in favour of skeleton |
+| 0.3 | Render pose skeleton + joint angle overlays (hip, knee, ankle, torso, elbow) | ✅ Done | `output/side_annotated.mp4`, `output/front_annotated.mp4` |
+| 0.4 | Save side-by-side output clips for review | ⬜ Todo | Original vs annotated still pending |
+| 0.5 | Write quick findings note: what works / fails | ⬜ Todo | Need `docs/analysis/phase-0-visual-check.md` |
 
 ### Exit Criteria
 
@@ -37,14 +37,14 @@ Goal: stable offline analysis for one uploaded video with useful overlay output.
 
 ### Tasks
 
-| # | Task | Status |
-|---|---|---|
-| 1.1 | Standardize pipeline stages: validate → detect → pose → angles → render |
-| 1.2 | Add confidence gating and fallback logic for low-confidence joints |
-| 1.3 | Smooth keypoints/angles to reduce jitter (temporal filter) |
-| 1.4 | Add lift-segment markers (setup, pull, catch/lockout where possible) |
-| 1.5 | CLI command for full analysis with reproducible output artifact |
-| 1.6 | Unit tests for angle math + integration tests for video processing path |
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 1.1 | Standardize pipeline stages: validate → detect → pose → angles → render | ✅ Done | Clean Architecture: domain / ports / adapters / use_cases |
+| 1.2 | Add confidence gating and fallback logic for low-confidence joints | ⬜ Todo | YOLO confidence threshold exists; per-joint gating not yet |
+| 1.3 | Smooth keypoints/angles to reduce jitter (temporal filter) | ⬜ Todo | Not started |
+| 1.4 | Add lift-segment markers (setup, pull, catch/lockout where possible) | ✅ Done | `PhaseDetector` (idle → setup → first_pull → second_pull → catch → recovery) |
+| 1.5 | CLI command for full analysis with reproducible output artifact | ✅ Done | `main.py --lift snatch --knowledge-base config/knowledge_base.yml` |
+| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 118 tests passing, 94% coverage; integration tests with real sample videos |
 
 ### Exit Criteria
 
@@ -59,13 +59,13 @@ Goal: convert angles and motion into clear coaching cues.
 
 ### Tasks
 
-| # | Task | Status |
-|---|---|---|
-| 2.1 | Define fault rules per lift (e.g., squat: knee cave, forward lean, depth) |
-| 2.2 | Implement rule engine using per-frame + per-phase thresholds |
-| 2.3 | Generate human-readable feedback with timestamps and severity |
-| 2.4 | Export session report (JSON + human summary + annotated video) |
-| 2.5 | Add regression tests for each rule using curated clips |
+| # | Task | Status | Notes |
+|---|---|---|---|
+| 2.1 | Define fault rules per lift (e.g., squat: knee cave, forward lean, depth) | ✅ Done | `config/knowledge_base.yml` — snatch + clean & jerk, 6 phases each |
+| 2.2 | Implement rule engine using per-frame + per-phase thresholds | ✅ Done | `KnowledgeBase` + `ClassifyFrame` + `AnalyzeLift` |
+| 2.3 | Generate human-readable feedback with timestamps and severity | 🟡 Partial | Per-frame faults exist with feedback strings; timestamped session-level summary not yet |
+| 2.4 | Export session report (JSON + human summary + annotated video) | ⬜ Todo | Annotated video done; JSON report and human summary missing |
+| 2.5 | Add regression tests for each rule using curated clips | ⬜ Todo | Curated clip fixtures not yet created |
 
 ### Exit Criteria
 
@@ -120,6 +120,8 @@ Goal: improve robustness and expand capability once core value is proven.
 
 ## Immediate Next Steps (This Week)
 
-1. Run Phase 0 tasks and produce 2–3 annotated clips.
-2. Create `docs/analysis/phase-0-visual-check.md` with pass/fail notes.
-3. Decide go/no-go for Phase 1 based on visual stability.
+1. Write `docs/analysis/phase-0-visual-check.md` (Phase 0 task 0.5) — pass/fail notes for the two annotated clips.
+2. Save side-by-side original vs annotated clips (Phase 0 task 0.4).
+3. Phase 1 task 1.3 — temporal smoothing of keypoints/angles to reduce jitter.
+4. Phase 2 task 2.4 — export JSON session report (timestamped fault list per phase).
+5. Phase 2 task 2.5 — start curated regression-clip fixture set.

@@ -1,0 +1,229 @@
+# Motion Detective — Lifting Knowledge Base
+#
+# Thresholds are joint angles in degrees measured from 2D side-view video.
+# Each joint rule has three severity bands:
+#   good:    [min, max] — correct technique
+#   warning: [min, max] — suboptimal, flag to lifter
+#   fault:   [min, max] — actionable error, must be corrected
+#
+# priority: safety | performance | efficiency
+# Source: coach agent — coach.md
+
+snatch:
+
+  setup:
+    hip_angle:
+      good: [40, 60]
+      warning: [60, 75]
+      fault: [75, 180]
+      feedback: "Set your hips lower — start with hips below shoulders, back neutral"
+      priority: performance
+    knee_angle:
+      good: [70, 100]
+      warning: [60, 70]
+      fault: [0, 60]
+      feedback: "Bend the knees more in the setup position"
+      priority: performance
+
+  first_pull:
+    hip_angle:
+      good: [70, 110]
+      warning: [50, 70]
+      fault: [0, 50]
+      feedback: "Keep hips from rising before the bar passes the knee"
+      priority: performance
+    knee_angle:
+      good: [100, 150]
+      warning: [80, 100]
+      fault: [0, 80]
+      feedback: "Maintain knee bend and push the floor away through the first pull"
+      priority: performance
+
+  transition:
+    knee_angle:
+      good: [80, 115]
+      warning: [115, 140]
+      fault: [140, 180]
+      feedback: "Re-bend the knees — initiate the double knee bend into the transition"
+      priority: performance
+    elbow_angle:
+      good: [165, 180]
+      warning: [150, 165]
+      fault: [0, 150]
+      feedback: "Keep arms straight — do not bend elbows early during the pull"
+      priority: performance
+
+  second_pull:
+    hip_angle:
+      good: [160, 180]
+      warning: [140, 160]
+      fault: [0, 140]
+      feedback: "Drive hips through fully — complete hip extension in the second pull"
+      priority: performance
+    knee_angle:
+      good: [155, 180]
+      warning: [140, 155]
+      fault: [0, 140]
+      feedback: "Extend the knees fully in the second pull"
+      priority: efficiency
+    elbow_angle:
+      good: [165, 180]
+      warning: [145, 165]
+      fault: [0, 145]
+      feedback: "Keep arms straight — pulling early wastes the drive from the legs"
+      priority: performance
+
+  catch:
+    elbow_angle:
+      good: [170, 180]
+      warning: [160, 170]
+      fault: [0, 160]
+      feedback: "Lock out the elbows overhead — soft lockout risks shoulder injury"
+      priority: safety
+    knee_angle:
+      good: [60, 100]
+      warning: [100, 115]
+      fault: [115, 180]
+      feedback: "Catch below parallel — receive the bar with hips below knee crease"
+      priority: performance
+    hip_angle:
+      good: [55, 90]
+      warning: [90, 110]
+      fault: [110, 180]
+      feedback: "Drop lower in the catch — squat deeper under the bar"
+      priority: performance
+
+  recovery:
+    hip_angle:
+      good: [160, 180]
+      warning: [140, 160]
+      fault: [0, 140]
+      feedback: "Stand up fully — complete the recovery with hips locked out"
+      priority: efficiency
+    knee_angle:
+      good: [165, 180]
+      warning: [150, 165]
+      fault: [0, 150]
+      feedback: "Extend the knees completely to finish the lift"
+      priority: efficiency
+
+
+clean_and_jerk:
+
+  setup:
+    hip_angle:
+      good: [45, 65]
+      warning: [65, 80]
+      fault: [80, 180]
+      feedback: "Lower your hips in the setup — back flat, chest up"
+      priority: performance
+    knee_angle:
+      good: [70, 100]
+      warning: [60, 70]
+      fault: [0, 60]
+      feedback: "Bend the knees more at the start position"
+      priority: performance
+
+  first_pull:
+    hip_angle:
+      good: [70, 110]
+      warning: [50, 70]
+      fault: [0, 50]
+      feedback: "Keep the hips from shooting up early — maintain back angle"
+      priority: performance
+    knee_angle:
+      good: [100, 150]
+      warning: [80, 100]
+      fault: [0, 80]
+      feedback: "Push the floor away and maintain knee angle through the first pull"
+      priority: performance
+
+  transition:
+    knee_angle:
+      good: [80, 115]
+      warning: [115, 140]
+      fault: [140, 180]
+      feedback: "Re-bend the knees into the transition for the clean"
+      priority: performance
+    elbow_angle:
+      good: [165, 180]
+      warning: [150, 165]
+      fault: [0, 150]
+      feedback: "Keep arms straight — do not pull early with the arms"
+      priority: performance
+
+  second_pull:
+    hip_angle:
+      good: [160, 180]
+      warning: [140, 160]
+      fault: [0, 140]
+      feedback: "Drive the hips through completely in the second pull"
+      priority: performance
+    elbow_angle:
+      good: [165, 180]
+      warning: [145, 165]
+      fault: [0, 145]
+      feedback: "Stay long — let the legs do the work before pulling with the arms"
+      priority: performance
+
+  catch:
+    elbow_angle:
+      good: [0, 45]
+      warning: [45, 65]
+      fault: [65, 180]
+      feedback: "Drive the elbows up and through — high elbows secure the rack position"
+      priority: safety
+    knee_angle:
+      good: [60, 100]
+      warning: [100, 115]
+      fault: [115, 180]
+      feedback: "Catch below parallel — receive the clean in a full front squat"
+      priority: performance
+    hip_angle:
+      good: [55, 90]
+      warning: [90, 110]
+      fault: [110, 180]
+      feedback: "Drop lower — receive the clean in a deeper squat position"
+      priority: performance
+
+  recovery:
+    hip_angle:
+      good: [160, 180]
+      warning: [140, 160]
+      fault: [0, 140]
+      feedback: "Stand all the way up before initiating the jerk"
+      priority: efficiency
+    knee_angle:
+      good: [165, 180]
+      warning: [150, 165]
+      fault: [0, 150]
+      feedback: "Fully extend the knees before the jerk dip"
+      priority: efficiency
+
+  jerk_dip:
+    hip_angle:
+      good: [155, 180]
+      warning: [140, 155]
+      fault: [0, 140]
+      feedback: "Keep the torso vertical in the dip — forward lean bleeds power"
+      priority: performance
+    knee_angle:
+      good: [145, 165]
+      warning: [130, 145]
+      fault: [0, 130]
+      feedback: "Dip straight down — knees tracking over toes, torso upright"
+      priority: performance
+
+  jerk_catch:
+    elbow_angle:
+      good: [170, 180]
+      warning: [160, 170]
+      fault: [0, 160]
+      feedback: "Lock out the elbows overhead — soft lockout is a safety fault"
+      priority: safety
+    knee_angle:
+      good: [100, 140]
+      warning: [90, 100]
+      fault: [0, 90]
+      feedback: "Split lower — receive the jerk in a deeper split position"
+      priority: efficiency
