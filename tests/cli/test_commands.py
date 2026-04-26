@@ -103,13 +103,14 @@ class TestRulesCommand:
 
 class TestValidateCommand:
     def test_prints_ok_for_valid_video(self, tmp_path, out):
-        # Use an actual sample video so cv2 can open it
-        import shutil
-        src = "data/sample_video_side.mp4"
-        dst = tmp_path / "video.mp4"
-        shutil.copy(src, dst)
+        from unittest.mock import patch
+        f = tmp_path / "video.mp4"
+        f.write_bytes(b"\x00" * 64)
 
-        exit_code = ValidateCommand(video_path=str(dst), out=out).run()
+        with patch("src.adapters.file_validator.cv2.VideoCapture") as mock_cap:
+            mock_cap.return_value.isOpened.return_value = True
+            exit_code = ValidateCommand(video_path=str(f), out=out).run()
+
         assert exit_code == 0
         assert "ok" in out.getvalue().lower() or "valid" in out.getvalue().lower()
 
