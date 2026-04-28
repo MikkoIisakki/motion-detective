@@ -73,14 +73,16 @@ class OverlayRenderer(FrameRendererPort):
     @staticmethod
     def _draw_angles(frame: np.ndarray, pose: Pose, analysis: FrameAnalysis | None) -> None:
         severity_by_joint = OverlayRenderer._severity_by_joint(analysis)
-        occupied: list[tuple[int, int, int, int]] = []
+        rows: list[tuple[str, float, tuple[int, int, int]]] = []
         for label, name_a, name_b, name_c, kb_joint in _ANGLE_SPECS:
             if not pose.has_all([name_a, name_b, name_c]):
                 continue
             a, b, c = pose.get(name_a), pose.get(name_b), pose.get(name_c)
             angle = joint_angle(a, b, c)
             color = _SEVERITY_COLOR.get(severity_by_joint.get(kb_joint), _DEFAULT_COLOR)
-            OverlayRenderer._draw_angle_label(frame, b.as_tuple(), label, angle, color, occupied)
+            rows.append((label, angle, color))
+        if rows:
+            OverlayRenderer._draw_angle_panel(frame, rows)
 
     @staticmethod
     def _severity_by_joint(analysis: FrameAnalysis | None) -> dict[str, FaultSeverity]:
@@ -89,34 +91,25 @@ class OverlayRenderer(FrameRendererPort):
         return {f.joint: f.severity for f in analysis.faults}
 
     @staticmethod
-    def _draw_angle_label(
+    def _draw_angle_panel(
         frame: np.ndarray,
-        joint: tuple[int, int],
-        label: str,
-        angle: float,
-        color: tuple[int, int, int],
-        occupied: list[tuple[int, int, int, int]],
+        rows: list[tuple[str, float, tuple[int, int, int]]],
     ) -> None:
-        text = f"{label}: {int(round(angle))} deg"
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale, thickness, outline = 0.9, 2, 5
-        (tw, th), baseline = cv2.getTextSize(text, font, font_scale, thickness)
-        frame_h, frame_w = frame.shape[:2]
+        font_scale, thickness, outline = 0.7, 2, 4
+        line_height = 28
+        padding = 12
+        frame_h = frame.shape[0]
 
-        def intersects(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
-            return a[0] < b[2] and a[2] > b[0] and a[1] < b[3] and a[3] > b[1]
+        # Bottom-left anchor: bottom of last row sits 'padding' above frame bottom.
+        first_row_baseline_y = frame_h - padding - line_height * (len(rows) - 1)
 
-        for dx, dy in [(10, -10), (10, 20), (-tw - 10, -10), (-tw - 10, 20), (0, -20)]:
-            x, y = joint[0] + dx, joint[1] + dy
-            box = (x - 2, y - th - 2, x + tw + 2, y + baseline + 2)
-            if box[0] < 0 or box[1] < 0 or box[2] >= frame_w or box[3] >= frame_h:
-                continue
-            if any(intersects(box, prev) for prev in occupied):
-                continue
+        for i, (label, angle, color) in enumerate(rows):
+            text = f"{label}: {int(round(angle))} deg"
+            x = padding
+            y = first_row_baseline_y + i * line_height
             cv2.putText(frame, text, (x, y), font, font_scale, (0, 0, 0), outline, cv2.LINE_AA)
             cv2.putText(frame, text, (x, y), font, font_scale, color, thickness, cv2.LINE_AA)
-            occupied.append(box)
-            return
 
     @staticmethod
     def _draw_phase_banner(frame: np.ndarray, analysis: FrameAnalysis) -> None:

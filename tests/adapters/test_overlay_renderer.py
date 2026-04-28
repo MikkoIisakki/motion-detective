@@ -82,6 +82,16 @@ class TestOverlayRenderer:
         # Output should differ from blank — angles were drawn somewhere
         assert not np.array_equal(out, frame)
 
+    def test_angle_labels_are_drawn_in_bottom_left_panel(self):
+        frame = blank_frame(480, 640)
+        out = self.renderer.render(frame, BBox(100, 20, 200, 400), full_pose())
+        h, w = frame.shape[:2]
+        bottom_left = out[h // 2 :, : w // 3]
+        top_right = out[: h // 2, 2 * w // 3 :]
+        # angle panel must mark bottom-left, not top-right
+        assert not np.array_equal(bottom_left, frame[h // 2 :, : w // 3])
+        np.testing.assert_array_equal(top_right, frame[: h // 2, 2 * w // 3 :])
+
     def test_render_with_analysis_draws_phase_label(self):
         frame = blank_frame(480, 640)
         analysis = FrameAnalysis(phase=LiftPhase.FIRST_PULL, measurements=[], faults=[])

@@ -9,6 +9,7 @@ from src.cli.commands import (
     ValidateCommand,
 )
 from src.domain.knowledge_base import KnowledgeBase
+from src.use_cases.analyze_video import AnalyzeVideoResult
 
 
 KB_YAML = """
@@ -134,3 +135,26 @@ class TestAnalyzeCommand:
         assert exit_code == 0
         assert captured == {"input": "in.mp4", "output": "out.mp4"}
         assert "/abs/out.mp4" in out.getvalue()
+
+    def test_prints_session_feedback_when_use_case_returns_structured_result(self, out):
+        class FakeUseCase:
+            def execute(self, input_path, output_path):
+                return AnalyzeVideoResult(
+                    output_path="/abs/out.mp4",
+                    feedback_summary=[
+                        "00:01.000-00:01.500 [FAULT/safety] setup: Keep knees out (10 frames)"
+                    ],
+                    report_json_path="/abs/out_report.json",
+                    report_summary_path="/abs/out_summary.txt",
+                )
+
+        cmd = AnalyzeCommand(use_case=FakeUseCase(), input_path="in.mp4", output_path="out.mp4", out=out)
+        exit_code = cmd.run()
+
+        assert exit_code == 0
+        output = out.getvalue()
+        assert "Output written to: /abs/out.mp4" in output
+        assert "JSON report: /abs/out_report.json" in output
+        assert "Summary report: /abs/out_summary.txt" in output
+        assert "Session feedback:" in output
+        assert "00:01.000-00:01.500" in output

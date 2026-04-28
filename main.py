@@ -21,14 +21,14 @@ from src.use_cases.analyze_video import AnalyzeVideo
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="motion-detective",
+        prog="md.sh",
         description="Olympic weightlifting video analysis — pose detection, phase tracking, fault classification.",
         epilog="Examples:\n"
-               "  motion-detective analyze data/lift.mp4 --lift snatch\n"
-               "  motion-detective lifts\n"
-               "  motion-detective phases snatch\n"
-               "  motion-detective rules snatch first_pull\n"
-               "  motion-detective validate data/lift.mp4",
+               "  ./md.sh analyze data/lift.mp4 --lift snatch\n"
+               "  ./md.sh lifts\n"
+               "  ./md.sh phases snatch\n"
+               "  ./md.sh rules snatch first_pull\n"
+               "  ./md.sh validate data/lift.mp4",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
@@ -40,6 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--lift", default="snatch", choices=["snatch", "clean_and_jerk"], help="Lift type (default: snatch)")
     analyze.add_argument("--yolo-model", default="yolov8n-pose.pt", help="YOLO model path (default: yolov8n-pose.pt)")
     analyze.add_argument("--knowledge-base", default="config/knowledge_base.yml", help="Path to fault rules YAML")
+    analyze.add_argument("--report-json", default=None, help="Path to JSON session report (default: based on --output)")
+    analyze.add_argument("--report-summary", default=None, help="Path to text session summary (default: based on --output)")
 
     # lifts
     lifts = sub.add_parser("lifts", help="List supported lifts in the knowledge base")
@@ -69,6 +71,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "analyze":
         kb = KnowledgeBase.from_file(args.knowledge_base)
         analyzer = AnalyzeLift(knowledge_base=kb, phase_detector=PhaseDetector(), lift=args.lift)
+        output_base = args.output.rsplit(".", 1)[0]
+        report_json = args.report_json or f"{output_base}_report.json"
+        report_summary = args.report_summary or f"{output_base}_summary.txt"
         use_case = AnalyzeVideo(
             validator=FileVideoValidator(),
             reader=OpenCVVideoReader(),
@@ -77,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
             pose_estimator=YoloPoseEstimator(yolo_model=args.yolo_model),
             renderer=OverlayRenderer(),
             analyzer=analyzer,
+            report_json_path=report_json,
+            report_summary_path=report_summary,
         )
         return AnalyzeCommand(use_case=use_case, input_path=args.video_path, output_path=args.output, out=sys.stdout).run()
 

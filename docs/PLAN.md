@@ -63,8 +63,8 @@ Goal: convert angles and motion into clear coaching cues.
 |---|---|---|---|
 | 2.1 | Define fault rules per lift (e.g., squat: knee cave, forward lean, depth) | ✅ Done | `config/knowledge_base.yml` — snatch + clean & jerk, 6 phases each |
 | 2.2 | Implement rule engine using per-frame + per-phase thresholds | ✅ Done | `KnowledgeBase` + `ClassifyFrame` + `AnalyzeLift` |
-| 2.3 | Generate human-readable feedback with timestamps and severity | 🟡 Partial | Per-frame faults exist with feedback strings; timestamped session-level summary not yet |
-| 2.4 | Export session report (JSON + human summary + annotated video) | ⬜ Todo | Annotated video done; JSON report and human summary missing |
+| 2.3 | Generate human-readable feedback with timestamps and severity | ✅ Done | `AnalyzeVideo` now emits session-level timestamped/severity feedback summary in `analyze` CLI output |
+| 2.4 | Export session report (JSON + human summary + annotated video) | ✅ Done | `analyze` now writes annotated video + JSON (`*_report.json`) + summary text (`*_summary.txt`) |
 | 2.5 | Add regression tests for each rule using curated clips | ⬜ Todo | Curated clip fixtures not yet created |
 
 ### Exit Criteria

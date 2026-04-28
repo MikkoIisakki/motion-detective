@@ -44,6 +44,13 @@ uv run python main.py validate data/sample_video_side.mp4
 Optional flags for `analyze`:
 - `--yolo-model` — YOLO model path (default: `yolov8n-pose.pt`)
 - `--knowledge-base` — fault rules YAML (default: `config/knowledge_base.yml`)
+- `--report-json` — JSON report path (default: `<output>_report.json`)
+- `--report-summary` — text summary path (default: `<output>_summary.txt`)
+
+`analyze` now exports three artifacts:
+- annotated video (`--output`)
+- JSON session report (timestamped findings with severity/priority)
+- text summary report (human-readable coaching cues)
 
 ## How it works
 
