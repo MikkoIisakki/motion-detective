@@ -13,6 +13,7 @@ from src.cli.commands import (
     RulesCommand,
     ValidateCommand,
 )
+from src.domain.keypoint_smoother import KeypointSmoother
 from src.domain.knowledge_base import KnowledgeBase
 from src.domain.phase_detector import PhaseDetector
 from src.use_cases.analyze_lift import AnalyzeLift
@@ -42,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--knowledge-base", default="config/knowledge_base.yml", help="Path to fault rules YAML")
     analyze.add_argument("--report-json", default=None, help="Path to JSON session report (default: based on --output)")
     analyze.add_argument("--report-summary", default=None, help="Path to text session summary (default: based on --output)")
+    analyze.add_argument("--smoothing", type=float, default=0.5, help="Keypoint smoothing factor in [0,1]; 1.0 disables smoothing (default: 0.5)")
 
     # lifts
     lifts = sub.add_parser("lifts", help="List supported lifts in the knowledge base")
@@ -74,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
         output_base = args.output.rsplit(".", 1)[0]
         report_json = args.report_json or f"{output_base}_report.json"
         report_summary = args.report_summary or f"{output_base}_summary.txt"
+        smoother = KeypointSmoother(alpha=args.smoothing) if args.smoothing < 1.0 else None
         use_case = AnalyzeVideo(
             validator=FileVideoValidator(),
             reader=OpenCVVideoReader(),
@@ -82,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
             pose_estimator=YoloPoseEstimator(yolo_model=args.yolo_model),
             renderer=OverlayRenderer(),
             analyzer=analyzer,
+            smoother=smoother,
             report_json_path=report_json,
             report_summary_path=report_summary,
         )

@@ -128,6 +128,36 @@ class TestAnalyzeVideo:
         uc.execute("input.mp4", "output.mp4")
         assert len(writer.written_frames) == 5
 
+    def test_smoother_is_applied_to_pose_before_render(self):
+        from src.domain.keypoint_smoother import KeypointSmoother
+        from src.domain.models import Keypoint, Pose
+
+        pose1 = Pose([Keypoint("nose", 100, 100)])
+        pose2 = Pose([Keypoint("nose", 200, 200)])
+
+        # Two frames; pose estimator returns pose1 then pose2
+        frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(2)]
+
+        class StubPoseEstimator(PoseEstimatorPort):
+            def __init__(self): self._poses = [pose1, pose2]; self._i = 0
+            def estimate(self, frame, bbox):
+                p = self._poses[self._i]; self._i += 1; return p
+
+        renderer = FakeRenderer()
+        uc = make_use_case(
+            reader=FakeReader(frames),
+            detector=FakeDetector(BBox(0, 0, 50, 50)),
+            pose_estimator=StubPoseEstimator(),
+            renderer=renderer,
+            smoother=KeypointSmoother(alpha=0.5),
+        )
+        uc.execute("input.mp4", "output.mp4")
+
+        # First frame: passthrough → nose at (100, 100)
+        assert renderer.calls[0][1].get("nose").as_tuple() == (100, 100)
+        # Second frame: smoothed (0.5*200 + 0.5*100, same for y) → (150, 150)
+        assert renderer.calls[1][1].get("nose").as_tuple() == (150, 150)
+
     def test_writer_opened_with_correct_output_path(self):
         writer = FakeWriter()
         uc = make_use_case(writer=writer)

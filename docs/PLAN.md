@@ -41,10 +41,10 @@ Goal: stable offline analysis for one uploaded video with useful overlay output.
 |---|---|---|---|
 | 1.1 | Standardize pipeline stages: validate → detect → pose → angles → render | ✅ Done | Clean Architecture: domain / ports / adapters / use_cases |
 | 1.2 | Add confidence gating and fallback logic for low-confidence joints | ⬜ Todo | YOLO confidence threshold exists; per-joint gating not yet |
-| 1.3 | Smooth keypoints/angles to reduce jitter (temporal filter) | ⬜ Todo | Not started |
+| 1.3 | Smooth keypoints/angles to reduce jitter (temporal filter) | ✅ Done | `KeypointSmoother` (EMA, alpha configurable via `--smoothing`); also bridges brief occlusions |
 | 1.4 | Add lift-segment markers (setup, pull, catch/lockout where possible) | ✅ Done | `PhaseDetector` (idle → setup → first_pull → second_pull → catch → recovery) |
 | 1.5 | CLI command for full analysis with reproducible output artifact | ✅ Done | `main.py --lift snatch --knowledge-base config/knowledge_base.yml` |
-| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 118 tests passing, 94% coverage; integration tests with real sample videos |
+| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 134 tests passing, 92% coverage; integration tests with real sample videos |
 
 ### Exit Criteria
 

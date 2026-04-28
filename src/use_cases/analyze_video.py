@@ -7,6 +7,7 @@ from pathlib import Path
 from collections.abc import Iterable
 
 from src.domain.faults import FaultPriority, FaultSeverity
+from src.domain.keypoint_smoother import KeypointSmoother
 from src.ports.detector import DetectorPort
 from src.ports.frame_renderer import FrameRendererPort
 from src.ports.pose_estimator import PoseEstimatorPort
@@ -49,6 +50,7 @@ class AnalyzeVideo:
         pose_estimator: PoseEstimatorPort,
         renderer: FrameRendererPort,
         analyzer: AnalyzeLift | None = None,
+        smoother: KeypointSmoother | None = None,
         report_json_path: str | None = None,
         report_summary_path: str | None = None,
     ) -> None:
@@ -59,6 +61,7 @@ class AnalyzeVideo:
         self._pose_estimator = pose_estimator
         self._renderer = renderer
         self._analyzer = analyzer
+        self._smoother = smoother
         self._report_json_path = report_json_path
         self._report_summary_path = report_summary_path
 
@@ -77,6 +80,8 @@ class AnalyzeVideo:
                     break
                 bbox = self._detector.detect(frame)
                 pose = self._pose_estimator.estimate(frame, bbox) if bbox is not None else None
+                if pose is not None and self._smoother is not None:
+                    pose = self._smoother.smooth(pose)
                 analysis = self._analyzer.analyse_frame(pose) if self._analyzer and pose else None
                 if analysis is not None and analysis.faults:
                     ts_seconds = frame_index / fps
