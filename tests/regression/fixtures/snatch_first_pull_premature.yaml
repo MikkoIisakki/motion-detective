@@ -1,0 +1,35 @@
+# Snatch first pull executed with hips shooting up early and knees almost
+# straight — both first_pull rules in FAULT band.
+clip:
+  name: snatch_first_pull_premature
+  lift: snatch
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  # SETUP: bar on the floor, neutral start pose (no faults).
+  - count: 5
+    pose:
+      knee_angle: 90
+      hip_angle: 50
+      elbow_angle: 180
+      wrist_y_offset: 0
+  # FIRST_PULL: knees too extended (~70 deg) and hip in deep flex (~30 deg)
+  # → first_pull.knee_angle FAULT [0, 80] and first_pull.hip_angle FAULT [0, 50].
+  - count: 25
+    pose:
+      knee_angle: 70
+      hip_angle: 30
+      elbow_angle: 180
+      wrist_y_offset: -50
+
+expected:
+  - phase: first_pull
+    severity: FAULT
+    priority: performance
+    feedback_substring: "Keep hips from rising"
+  - phase: first_pull
+    severity: FAULT
+    priority: performance
+    feedback_substring: "Maintain knee bend"

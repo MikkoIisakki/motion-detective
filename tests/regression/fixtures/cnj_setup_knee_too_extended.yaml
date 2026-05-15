@@ -1,0 +1,22 @@
+# Clean & jerk setup with knees too straight — cnj.setup.knee_angle FAULT
+# [0, 60]. Hip stays in good range so only the knee rule fires.
+clip:
+  name: cnj_setup_knee_too_extended
+  lift: clean_and_jerk
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 30
+    pose:
+      knee_angle: 50
+      hip_angle: 55         # cnj.setup.hip_angle good [45, 65]
+      elbow_angle: 180
+      wrist_y_offset: 0
+
+expected:
+  - phase: setup
+    severity: FAULT
+    priority: performance
+    feedback_substring: "Bend the knees more at the start"

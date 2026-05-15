@@ -1,0 +1,53 @@
+# Lifter catches the snatch but fails to stand up fully — knees and hips
+# remain bent in recovery (recovery.knee_angle FAULT [0, 150],
+# recovery.hip_angle FAULT [0, 140]).
+clip:
+  name: snatch_recovery_incomplete
+  lift: snatch
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 5
+    pose:
+      knee_angle: 90
+      hip_angle: 50
+      elbow_angle: 180
+      wrist_y_offset: 0
+  - count: 5
+    pose:
+      knee_angle: 120
+      hip_angle: 80
+      elbow_angle: 180
+      wrist_y_offset: -50
+  - count: 5
+    pose:
+      knee_angle: 170
+      hip_angle: 170
+      elbow_angle: 180
+      wrist_y_offset: -260
+  # Good catch.
+  - count: 5
+    pose:
+      knee_angle: 80
+      hip_angle: 70
+      elbow_angle: 180
+      wrist_y_offset: -280
+  # RECOVERY: hips rise (vs catch hip_y) but knees + hips stay flexed.
+  - count: 15
+    pose:
+      knee_angle: 140
+      hip_angle: 130
+      elbow_angle: 180
+      wrist_y_offset: -280
+
+expected:
+  - phase: recovery
+    severity: FAULT
+    priority: efficiency
+    feedback_substring: "Stand up fully"
+  - phase: recovery
+    severity: FAULT
+    priority: efficiency
+    feedback_substring: "Extend the knees completely"

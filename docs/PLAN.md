@@ -2,8 +2,8 @@
 
 **Vision**: a gym-ready app where you record a lift, get an annotated video, and receive actionable technique feedback.
 
-**Current date**: 2026-04-25
-**Current phase**: Phase 2 — Technique Rules and Feedback (in progress)
+**Current date**: 2026-05-15
+**Current phase**: Phase 2 complete; ready to start Phase 3 — Gym Usability
 
 ---
 
@@ -65,7 +65,7 @@ Goal: convert angles and motion into clear coaching cues.
 | 2.2 | Implement rule engine using per-frame + per-phase thresholds | ✅ Done | `KnowledgeBase` + `ClassifyFrame` + `AnalyzeLift` |
 | 2.3 | Generate human-readable feedback with timestamps and severity | ✅ Done | `AnalyzeVideo` now emits session-level timestamped/severity feedback summary in `analyze` CLI output |
 | 2.4 | Export session report (JSON + human summary + annotated video) | ✅ Done | `analyze` now writes annotated video + JSON (`*_report.json`) + summary text (`*_summary.txt`) |
-| 2.5 | Add regression tests for each rule using curated clips | ⬜ Todo | Curated clip fixtures not yet created |
+| 2.5 | Add regression tests for each rule using curated clips | ✅ Done | Two-tier suite in `tests/regression/`: per-rule classify regression covers every rule in the KB (incl. unreachable phases); 7 synthetic stick-figure MP4 clips drive `AnalyzeVideo` end-to-end through every reachable phase incl. a clean "perfect rep" negative case |
 
 ### Exit Criteria
 
@@ -122,6 +122,9 @@ Goal: improve robustness and expand capability once core value is proven.
 
 1. Write `docs/analysis/phase-0-visual-check.md` (Phase 0 task 0.5) — pass/fail notes for the two annotated clips.
 2. Save side-by-side original vs annotated clips (Phase 0 task 0.4).
-3. Phase 1 task 1.3 — temporal smoothing of keypoints/angles to reduce jitter.
-4. Phase 2 task 2.4 — export JSON session report (timestamped fault list per phase).
-5. Phase 2 task 2.5 — start curated regression-clip fixture set.
+3. Phase 1 task 1.2 — per-joint confidence gating (the only remaining Phase 1 gap).
+4. Pick first Phase 3 task — likely 3.4 (fast preview mode) before mobile capture.
+
+## Known Limitations (carried forward)
+
+- `PhaseDetector` cannot reach `transition`, `jerk_dip`, or `jerk_catch` phases — the state machine only covers idle → setup → first_pull → second_pull → catch → recovery. Rules for unreachable phases are still pinned by the per-rule classify regression in `tests/regression/test_rule_classify_regression.py` but they will never fire from `AnalyzeVideo`. Extending phase detection is a Phase 3+ task.

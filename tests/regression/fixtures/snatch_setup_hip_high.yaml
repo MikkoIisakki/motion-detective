@@ -1,0 +1,24 @@
+# Snatch setup with hips way too high — back nearly vertical, bar still on the floor.
+# Targets snatch.setup.hip_angle FAULT band (75 - 180 deg).
+clip:
+  name: snatch_setup_hip_high
+  lift: snatch
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 30
+    pose:
+      knee_angle: 90
+      hip_angle: 170
+      elbow_angle: 180
+      anchor_x: 320
+      anchor_y: 400
+      wrist_y_offset: 0    # wrist at ankle level -> phase detector enters SETUP
+
+expected:
+  - phase: setup
+    severity: FAULT
+    priority: performance
+    feedback_substring: "Set your hips lower"

@@ -1,0 +1,42 @@
+# Snatch executed cleanly through every reachable phase — must produce zero
+# actionable findings. Acts as the negative case for the regression suite.
+clip:
+  name: snatch_perfect_rep
+  lift: snatch
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 5
+    pose:
+      knee_angle: 90       # setup.knee_angle good [70, 100]
+      hip_angle: 50        # setup.hip_angle good [40, 60]
+      elbow_angle: 180
+      wrist_y_offset: 0
+  - count: 5
+    pose:
+      knee_angle: 120      # first_pull.knee_angle good [100, 150]
+      hip_angle: 90        # first_pull.hip_angle good [70, 110]
+      elbow_angle: 180
+      wrist_y_offset: -50
+  - count: 5
+    pose:
+      knee_angle: 170      # second_pull.knee_angle good [155, 180]
+      hip_angle: 170       # second_pull.hip_angle good [160, 180]
+      elbow_angle: 180     # second_pull.elbow_angle good [165, 180]
+      wrist_y_offset: -260
+  - count: 5
+    pose:
+      knee_angle: 80       # catch.knee_angle good [60, 100]
+      hip_angle: 70        # catch.hip_angle good [55, 90]
+      elbow_angle: 180     # catch.elbow_angle good [170, 180]
+      wrist_y_offset: -280
+  - count: 10
+    pose:
+      knee_angle: 170      # recovery.knee_angle good [165, 180]
+      hip_angle: 170       # recovery.hip_angle good [160, 180]
+      elbow_angle: 180
+      wrist_y_offset: -280
+
+expected: []
