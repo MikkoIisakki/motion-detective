@@ -7,6 +7,7 @@ from pathlib import Path
 from collections.abc import Iterable
 
 from src.domain.faults import FaultPriority, FaultSeverity
+from src.domain.joint_gate import gate_keypoints
 from src.domain.keypoint_smoother import KeypointSmoother
 from src.ports.detector import DetectorPort
 from src.ports.frame_renderer import FrameRendererPort
@@ -53,6 +54,7 @@ class AnalyzeVideo:
         smoother: KeypointSmoother | None = None,
         report_json_path: str | None = None,
         report_summary_path: str | None = None,
+        min_joint_confidence: float | None = None,
     ) -> None:
         self._validator = validator
         self._reader = reader
@@ -64,6 +66,7 @@ class AnalyzeVideo:
         self._smoother = smoother
         self._report_json_path = report_json_path
         self._report_summary_path = report_summary_path
+        self._min_joint_confidence = min_joint_confidence
 
     def execute(self, input_path: str, output_path: str) -> AnalyzeVideoResult:
         self._validator.validate(input_path)
@@ -82,6 +85,8 @@ class AnalyzeVideo:
                     break
                 bbox = self._detector.detect(frame)
                 pose = self._pose_estimator.estimate(frame, bbox) if bbox is not None else None
+                if pose is not None and self._min_joint_confidence:
+                    pose = gate_keypoints(pose, self._min_joint_confidence)
                 if pose is not None and self._smoother is not None:
                     pose = self._smoother.smooth(pose)
                 analysis = self._analyzer.analyse_frame(pose) if self._analyzer and pose else None

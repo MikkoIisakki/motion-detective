@@ -3,7 +3,7 @@
 **Vision**: a gym-ready app where you record a lift, get an annotated video, and receive actionable technique feedback.
 
 **Current date**: 2026-05-16
-**Current phase**: Phase 2 complete; ready to start Phase 3 — Gym Usability
+**Current phase**: Phases 1 and 2 complete; ready to start Phase 3 — Gym Usability
 
 ---
 
@@ -40,11 +40,11 @@ Goal: stable offline analysis for one uploaded video with useful overlay output.
 | # | Task | Status | Notes |
 |---|---|---|---|
 | 1.1 | Standardize pipeline stages: validate → detect → pose → angles → render | ✅ Done | Clean Architecture: domain / ports / adapters / use_cases |
-| 1.2 | Add confidence gating and fallback logic for low-confidence joints | ⬜ Todo | YOLO confidence threshold exists; per-joint gating not yet |
+| 1.2 | Add confidence gating and fallback logic for low-confidence joints | ✅ Done | `Keypoint.confidence` populated from YOLO `r.keypoints.conf`; `gate_keypoints` drops sub-threshold joints between estimate and smooth; `--min-joint-confidence` CLI flag (default 0.0 = disabled) |
 | 1.3 | Smooth keypoints/angles to reduce jitter (temporal filter) | ✅ Done | `KeypointSmoother` (EMA, alpha configurable via validated `--smoothing`); resets per `AnalyzeVideo.execute()` and bridges brief occlusions |
 | 1.4 | Add lift-segment markers (setup, pull, catch/lockout where possible) | ✅ Done | `PhaseDetector` (idle → setup → first_pull → second_pull → catch → recovery) |
 | 1.5 | CLI command for full analysis with reproducible output artifact | ✅ Done | `main.py --lift snatch --knowledge-base config/knowledge_base.yml` |
-| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 341 tests passing, 95% coverage; integration tests with real sample videos |
+| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 361 tests passing, 95% coverage; integration tests with real sample videos |
 
 ### Exit Criteria
 
@@ -122,8 +122,7 @@ Goal: improve robustness and expand capability once core value is proven.
 
 1. Write `docs/analysis/phase-0-visual-check.md` (Phase 0 task 0.5) — pass/fail notes for the two annotated clips.
 2. Save side-by-side original vs annotated clips (Phase 0 task 0.4).
-3. Phase 1 task 1.2 — per-joint confidence gating (the only remaining Phase 1 gap).
-4. Pick first Phase 3 task — likely 3.4 (fast preview mode) before mobile capture.
+3. Pick first Phase 3 task — likely 3.4 (fast preview mode) before mobile capture.
 
 ## Known Limitations (carried forward)
 

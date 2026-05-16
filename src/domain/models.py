@@ -31,6 +31,7 @@ class Keypoint:
     name: str
     x: int
     y: int
+    confidence: float = 1.0
 
     def as_tuple(self) -> tuple[int, int]:
         return (self.x, self.y)

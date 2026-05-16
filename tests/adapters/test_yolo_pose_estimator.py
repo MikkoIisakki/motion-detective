@@ -49,3 +49,29 @@ class TestBuildPose:
         kp = pose.get("nose")
         assert isinstance(kp.x, int)
         assert isinstance(kp.y, int)
+
+    def test_defaults_confidence_to_one_when_not_provided(self):
+        arr = np.zeros((17, 2), dtype=np.float32)
+        pose = YoloPoseEstimator._build_pose(arr)
+        assert pose.get("nose").confidence == 1.0
+
+    def test_threads_confidence_values_onto_keypoints(self):
+        xy = np.zeros((17, 2), dtype=np.float32)
+        conf = np.zeros((17,), dtype=np.float32)
+        conf[0] = 0.95   # nose
+        conf[5] = 0.3    # left_shoulder
+        conf[16] = 0.7   # right_ankle
+        pose = YoloPoseEstimator._build_pose(xy, conf)
+        assert pose.get("nose").confidence == pytest.approx(0.95, abs=1e-6)
+        assert pose.get("left_shoulder").confidence == pytest.approx(0.3, abs=1e-6)
+        assert pose.get("right_ankle").confidence == pytest.approx(0.7, abs=1e-6)
+
+    def test_skips_when_confidence_array_shorter_than_xy(self):
+        xy = np.zeros((17, 2), dtype=np.float32)
+        conf = np.array([0.9, 0.8, 0.7], dtype=np.float32)
+        pose = YoloPoseEstimator._build_pose(xy, conf)
+        # index 0 present and uses the supplied confidence
+        assert pose.get("nose") is not None
+        assert pose.get("nose").confidence == pytest.approx(0.9, abs=1e-6)
+        # index 5 beyond conf array → keypoint omitted
+        assert pose.get("left_shoulder") is None

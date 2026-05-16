@@ -30,6 +30,16 @@ def _smoothing_alpha(value: str) -> float:
     return alpha
 
 
+def _min_joint_confidence(value: str) -> float:
+    try:
+        threshold = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number in [0, 1]") from exc
+    if not 0.0 <= threshold <= 1.0:
+        raise argparse.ArgumentTypeError("must be in [0, 1]")
+    return threshold
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="md.sh",
@@ -54,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--report-json", default=None, help="Path to JSON session report (default: based on --output)")
     analyze.add_argument("--report-summary", default=None, help="Path to text session summary (default: based on --output)")
     analyze.add_argument("--smoothing", type=_smoothing_alpha, default=0.5, help="Keypoint smoothing factor in [0,1]; 1.0 disables smoothing (default: 0.5)")
+    analyze.add_argument("--min-joint-confidence", type=_min_joint_confidence, default=0.0, help="Drop keypoints below this confidence in [0,1]; 0.0 disables gating (default: 0.0)")
 
     # lifts
     lifts = sub.add_parser("lifts", help="List supported lifts in the knowledge base")
@@ -98,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
             smoother=smoother,
             report_json_path=report_json,
             report_summary_path=report_summary,
+            min_joint_confidence=args.min_joint_confidence,
         )
         return AnalyzeCommand(use_case=use_case, input_path=args.video_path, output_path=args.output, out=sys.stdout).run()
 

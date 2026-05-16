@@ -275,6 +275,95 @@ class TestAnalyzeVideo:
         assert "setup" in result.feedback_summary[0]
         assert "(2 frames)" in result.feedback_summary[0]
 
+    def test_low_confidence_keypoints_are_dropped_before_render(self):
+        frames = [np.zeros((240, 320, 3), dtype=np.uint8)]
+        pose = Pose([
+            Keypoint("left_knee", 50, 90, confidence=0.95),
+            Keypoint("right_knee", 60, 90, confidence=0.2),
+        ])
+        renderer = FakeRenderer()
+        uc = make_use_case(
+            reader=FakeReader(frames),
+            detector=FakeDetector(BBox(0, 0, 50, 50)),
+            pose_estimator=FakePoseEstimator(pose),
+            renderer=renderer,
+            min_joint_confidence=0.5,
+        )
+
+        uc.execute("input.mp4", "output.mp4")
+
+        rendered_pose = renderer.calls[0][1]
+        assert rendered_pose.get("left_knee") is not None
+        assert rendered_pose.get("right_knee") is None
+
+    def test_min_confidence_none_leaves_pose_untouched(self):
+        frames = [np.zeros((240, 320, 3), dtype=np.uint8)]
+        pose = Pose([
+            Keypoint("left_knee", 50, 90, confidence=0.1),
+            Keypoint("right_knee", 60, 90, confidence=0.2),
+        ])
+        renderer = FakeRenderer()
+        uc = make_use_case(
+            reader=FakeReader(frames),
+            detector=FakeDetector(BBox(0, 0, 50, 50)),
+            pose_estimator=FakePoseEstimator(pose),
+            renderer=renderer,
+        )
+
+        uc.execute("input.mp4", "output.mp4")
+
+        rendered_pose = renderer.calls[0][1]
+        assert rendered_pose.get("left_knee") is not None
+        assert rendered_pose.get("right_knee") is not None
+
+    def test_min_confidence_zero_is_treated_as_no_gate(self):
+        frames = [np.zeros((240, 320, 3), dtype=np.uint8)]
+        pose = Pose([
+            Keypoint("left_knee", 50, 90, confidence=0.0),
+        ])
+        renderer = FakeRenderer()
+        uc = make_use_case(
+            reader=FakeReader(frames),
+            detector=FakeDetector(BBox(0, 0, 50, 50)),
+            pose_estimator=FakePoseEstimator(pose),
+            renderer=renderer,
+            min_joint_confidence=0.0,
+        )
+
+        uc.execute("input.mp4", "output.mp4")
+
+        # zero-conf keypoint kept (gate disabled by 0.0 threshold)
+        assert renderer.calls[0][1].get("left_knee") is not None
+
+    def test_gate_runs_before_smoother_so_history_can_bridge_dropouts(self):
+        from src.domain.keypoint_smoother import KeypointSmoother
+
+        good = Pose([Keypoint("left_knee", 100, 100, confidence=0.9)])
+        bad = Pose([Keypoint("left_knee", 999, 999, confidence=0.1)])
+        frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(2)]
+
+        class StubPoseEstimator(PoseEstimatorPort):
+            def __init__(self): self._poses = [good, bad]; self._i = 0
+            def estimate(self, frame, bbox):
+                p = self._poses[self._i]; self._i += 1; return p
+
+        renderer = FakeRenderer()
+        uc = make_use_case(
+            reader=FakeReader(frames),
+            detector=FakeDetector(BBox(0, 0, 50, 50)),
+            pose_estimator=StubPoseEstimator(),
+            renderer=renderer,
+            smoother=KeypointSmoother(alpha=0.5),
+            min_joint_confidence=0.5,
+        )
+        uc.execute("input.mp4", "output.mp4")
+
+        # Frame 1: good keypoint passes the gate, smoother passthrough.
+        assert renderer.calls[0][1].get("left_knee").as_tuple() == (100, 100)
+        # Frame 2: low-confidence keypoint dropped by the gate; smoother
+        # carries forward the prior value rather than averaging with (999,999).
+        assert renderer.calls[1][1].get("left_knee").as_tuple() == (100, 100)
+
     def test_writes_json_and_summary_report_when_paths_provided(self, tmp_path):
         frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(2)]
         pose = Pose([Keypoint("left_knee", 50, 90)])

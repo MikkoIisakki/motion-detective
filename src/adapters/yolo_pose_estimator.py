@@ -49,7 +49,13 @@ class YoloPoseEstimator(PoseEstimatorPort):
         if best_idx >= len(kp_array):
             return None
 
-        return self._build_pose(kp_array[best_idx])
+        conf_array = None
+        if getattr(r.keypoints, "conf", None) is not None:
+            conf_all = r.keypoints.conf.cpu().numpy()
+            if best_idx < len(conf_all):
+                conf_array = conf_all[best_idx]
+
+        return self._build_pose(kp_array[best_idx], conf_array)
 
     @staticmethod
     def _closest_detection_index(xyxy: np.ndarray, bbox: BBox) -> int | None:
@@ -65,10 +71,23 @@ class YoloPoseEstimator(PoseEstimatorPort):
         return best_idx
 
     @staticmethod
-    def _build_pose(keypoints_xy: np.ndarray) -> Pose:
+    def _build_pose(
+        keypoints_xy: np.ndarray, keypoints_conf: np.ndarray | None = None
+    ) -> Pose:
+        def confidence_for(idx: int) -> float:
+            if keypoints_conf is None:
+                return 1.0
+            return float(keypoints_conf[idx])
+
         kps = [
-            Keypoint(name, int(keypoints_xy[idx][0]), int(keypoints_xy[idx][1]))
+            Keypoint(
+                name,
+                int(keypoints_xy[idx][0]),
+                int(keypoints_xy[idx][1]),
+                confidence=confidence_for(idx),
+            )
             for idx, name in _COCO_NAMES.items()
             if idx < len(keypoints_xy)
+            and (keypoints_conf is None or idx < len(keypoints_conf))
         ]
         return Pose(kps)

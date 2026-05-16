@@ -46,6 +46,14 @@ class TestKeypoint:
         assert Keypoint("nose", 50, 75) == Keypoint("nose", 50, 75)
         assert Keypoint("nose", 50, 75) != Keypoint("nose", 51, 75)
 
+    def test_confidence_defaults_to_one(self):
+        kp = Keypoint(name="nose", x=0, y=0)
+        assert kp.confidence == 1.0
+
+    def test_confidence_can_be_set_explicitly(self):
+        kp = Keypoint(name="nose", x=0, y=0, confidence=0.42)
+        assert kp.confidence == 0.42
+
 
 class TestPose:
     def test_get_existing_keypoint(self):
