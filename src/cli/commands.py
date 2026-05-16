@@ -13,6 +13,10 @@ class _UseCase(Protocol):
     def execute(self, input_path: str, output_path: str) -> str | AnalyzeVideoResult: ...
 
 
+class _CompareUseCase(Protocol):
+    def execute(self, left_path: str, right_path: str, output_path: str) -> str: ...
+
+
 @dataclass
 class LiftsCommand:
     kb: KnowledgeBase
@@ -110,4 +114,22 @@ class AnalyzeCommand:
                 print(f"  {line}", file=self.out)
         else:
             print(f"Output written to: {result}", file=self.out)
+        return 0
+
+
+@dataclass
+class CompareCommand:
+    use_case: _CompareUseCase
+    left_path: str
+    right_path: str
+    output_path: str
+    out: IO[str]
+
+    def run(self) -> int:
+        try:
+            resolved = self.use_case.execute(self.left_path, self.right_path, self.output_path)
+        except ValueError as e:
+            print(f"FAIL: {e}", file=self.out)
+            return 1
+        print(f"Side-by-side written to: {resolved}", file=self.out)
         return 0

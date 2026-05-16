@@ -3,7 +3,7 @@
 **Vision**: a gym-ready app where you record a lift, get an annotated video, and receive actionable technique feedback.
 
 **Current date**: 2026-05-16
-**Current phase**: Phases 1 and 2 complete; ready to start Phase 3 — Gym Usability
+**Current phase**: Phase 0 wrap-up complete (pending human visual review); Phases 1 and 2 complete; ready to start Phase 3 — Gym Usability
 
 ---
 
@@ -18,8 +18,8 @@ Goal: verify with your own eyes that lifter detection and angle overlay work on 
 | 0.1 | Select 2–3 representative lift videos (side/front) | ✅ Done | `data/sample_video_side.mp4`, `data/sample_video_front.mp4` |
 | 0.2 | Run lifter detection pipeline and render bounding-box output | ✅ Done | YOLO+HOG+motion fallback with temporal tracking; bounding box later removed in favour of skeleton |
 | 0.3 | Render pose skeleton + joint angle overlays (hip, knee, ankle, torso, elbow) | ✅ Done | `output/side_annotated.mp4`, `output/front_annotated.mp4` |
-| 0.4 | Save side-by-side output clips for review | ⬜ Todo | Original vs annotated still pending |
-| 0.5 | Write quick findings note: what works / fails | ⬜ Todo | Need `docs/analysis/phase-0-visual-check.md` |
+| 0.4 | Save side-by-side output clips for review | ✅ Done | New `md.sh compare <original> <annotated> --output ...` subcommand (`CompareVideos` use case + `CompareCommand`); `output/side_compare.mp4`, `output/front_compare.mp4` produced |
+| 0.5 | Write quick findings note: what works / fails | ✅ Done (bootstrapped) | `docs/analysis/phase-0-visual-check.md` updated with current CLI + fresh run metadata + 0-fault outcomes from both clips. Visual checkboxes / observations to be filled after watching the comparison clips. |
 
 ### Exit Criteria
 
@@ -44,7 +44,7 @@ Goal: stable offline analysis for one uploaded video with useful overlay output.
 | 1.3 | Smooth keypoints/angles to reduce jitter (temporal filter) | ✅ Done | `KeypointSmoother` (EMA, alpha configurable via validated `--smoothing`); resets per `AnalyzeVideo.execute()` and bridges brief occlusions |
 | 1.4 | Add lift-segment markers (setup, pull, catch/lockout where possible) | ✅ Done | `PhaseDetector` (idle → setup → first_pull → second_pull → catch → recovery) |
 | 1.5 | CLI command for full analysis with reproducible output artifact | ✅ Done | `main.py --lift snatch --knowledge-base config/knowledge_base.yml` |
-| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 361 tests passing, 95% coverage; integration tests with real sample videos |
+| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 379 tests passing, 95% coverage; integration tests with real sample videos |
 
 ### Exit Criteria
 
@@ -120,9 +120,8 @@ Goal: improve robustness and expand capability once core value is proven.
 
 ## Immediate Next Steps (This Week)
 
-1. Write `docs/analysis/phase-0-visual-check.md` (Phase 0 task 0.5) — pass/fail notes for the two annotated clips.
-2. Save side-by-side original vs annotated clips (Phase 0 task 0.4).
-3. Pick first Phase 3 task — likely 3.4 (fast preview mode) before mobile capture.
+1. Watch `output/side_compare.mp4` and `output/front_compare.mp4`, fill in the visual checkboxes / observations / GO-NO-GO in `docs/analysis/phase-0-visual-check.md`.
+2. Pick first Phase 3 task — likely 3.4 (fast preview mode) before mobile capture.
 
 ## Known Limitations (carried forward)
 

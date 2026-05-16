@@ -8,6 +8,7 @@ from src.adapters.yolo_detector import YoloPoseDetector
 from src.adapters.yolo_pose_estimator import YoloPoseEstimator
 from src.cli.commands import (
     AnalyzeCommand,
+    CompareCommand,
     LiftsCommand,
     PhasesCommand,
     RulesCommand,
@@ -18,6 +19,7 @@ from src.domain.knowledge_base import KnowledgeBase
 from src.domain.phase_detector import PhaseDetector
 from src.use_cases.analyze_lift import AnalyzeLift
 from src.use_cases.analyze_video import AnalyzeVideo
+from src.use_cases.compare_videos import CompareVideos
 
 
 def _smoothing_alpha(value: str) -> float:
@@ -85,6 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
     validate = sub.add_parser("validate", help="Validate a video file (path, mime type, openable)")
     validate.add_argument("video_path", help="Path to the video file to validate")
 
+    # compare
+    compare = sub.add_parser("compare", help="Stitch two videos side-by-side into one comparison clip")
+    compare.add_argument("left_path", help="Path to the left (e.g. original) video file")
+    compare.add_argument("right_path", help="Path to the right (e.g. annotated) video file")
+    compare.add_argument("--output", default="output/compare.mp4", help="Output video path (default: output/compare.mp4)")
+
     return parser
 
 
@@ -129,6 +137,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "validate":
         return ValidateCommand(video_path=args.video_path, out=sys.stdout).run()
+
+    if args.command == "compare":
+        compare_use_case = CompareVideos(
+            left_reader=OpenCVVideoReader(),
+            right_reader=OpenCVVideoReader(),
+            writer=OpenCVVideoWriter(),
+        )
+        return CompareCommand(
+            use_case=compare_use_case,
+            left_path=args.left_path,
+            right_path=args.right_path,
+            output_path=args.output,
+            out=sys.stdout,
+        ).run()
 
     return 1
 

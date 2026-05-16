@@ -3,6 +3,7 @@ import pytest
 
 from src.cli.commands import (
     AnalyzeCommand,
+    CompareCommand,
     LiftsCommand,
     PhasesCommand,
     RulesCommand,
@@ -158,3 +159,49 @@ class TestAnalyzeCommand:
         assert "Summary report: /abs/out_summary.txt" in output
         assert "Session feedback:" in output
         assert "00:01.000-00:01.500" in output
+
+
+class TestCompareCommand:
+    def test_dispatches_to_use_case_with_both_inputs_and_output(self, out):
+        captured = {}
+
+        class FakeUseCase:
+            def execute(self, left_path, right_path, output_path):
+                captured["left"] = left_path
+                captured["right"] = right_path
+                captured["output"] = output_path
+                return f"/abs/{output_path}"
+
+        cmd = CompareCommand(
+            use_case=FakeUseCase(),
+            left_path="left.mp4",
+            right_path="right.mp4",
+            output_path="compare.mp4",
+            out=out,
+        )
+        exit_code = cmd.run()
+
+        assert exit_code == 0
+        assert captured == {
+            "left": "left.mp4",
+            "right": "right.mp4",
+            "output": "compare.mp4",
+        }
+        assert "Side-by-side written to: /abs/compare.mp4" in out.getvalue()
+
+    def test_prints_fail_and_returns_one_when_use_case_raises_value_error(self, out):
+        class ExplodingUseCase:
+            def execute(self, left_path, right_path, output_path):
+                raise ValueError("Unable to open video: missing.mp4")
+
+        cmd = CompareCommand(
+            use_case=ExplodingUseCase(),
+            left_path="left.mp4",
+            right_path="missing.mp4",
+            output_path="compare.mp4",
+            out=out,
+        )
+        exit_code = cmd.run()
+
+        assert exit_code == 1
+        assert "FAIL: Unable to open video: missing.mp4" in out.getvalue()
