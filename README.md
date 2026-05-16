@@ -72,6 +72,14 @@ Current assumptions:
 ## Tests
 
 ```bash
-uv run pytest -q                        # unit tests (fast, no video files needed)
-uv run pytest -q -m integration        # integration tests (require real video files)
+uv run pytest -q                        # unit + regression tests (fast, no real video needed)
+uv run pytest -q -m integration         # integration tests (require real video files)
 ```
+
+Two-tier regression under `tests/regression/`:
+- per-rule classify tests for every entry in `config/knowledge_base.yml`
+- end-to-end clip tests that render synthetic stick-figure MP4s from YAML fixtures and drive `AnalyzeVideo` with a `FixturePoseEstimator` (no YOLO dependency)
+
+## Working with AI assistants
+
+See [AGENTS.md](AGENTS.md) for development standards, repo layout, test approach, and known limitations. Claude Code, Cursor, Copilot, etc. should all follow it. `CLAUDE.md` points to the same file.
