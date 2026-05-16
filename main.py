@@ -20,6 +20,16 @@ from src.use_cases.analyze_lift import AnalyzeLift
 from src.use_cases.analyze_video import AnalyzeVideo
 
 
+def _smoothing_alpha(value: str) -> float:
+    try:
+        alpha = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number in [0, 1]") from exc
+    if not 0.0 <= alpha <= 1.0:
+        raise argparse.ArgumentTypeError("must be in [0, 1]")
+    return alpha
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="md.sh",
@@ -43,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--knowledge-base", default="config/knowledge_base.yml", help="Path to fault rules YAML")
     analyze.add_argument("--report-json", default=None, help="Path to JSON session report (default: based on --output)")
     analyze.add_argument("--report-summary", default=None, help="Path to text session summary (default: based on --output)")
-    analyze.add_argument("--smoothing", type=float, default=0.5, help="Keypoint smoothing factor in [0,1]; 1.0 disables smoothing (default: 0.5)")
+    analyze.add_argument("--smoothing", type=_smoothing_alpha, default=0.5, help="Keypoint smoothing factor in [0,1]; 1.0 disables smoothing (default: 0.5)")
 
     # lifts
     lifts = sub.add_parser("lifts", help="List supported lifts in the knowledge base")

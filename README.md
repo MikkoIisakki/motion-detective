@@ -76,9 +76,11 @@ uv run pytest -q                        # unit + regression tests (fast, no real
 uv run pytest -q -m integration         # integration tests (require real video files)
 ```
 
+Current full suite: 341 tests, 95% coverage over `src/`.
+
 Two-tier regression under `tests/regression/`:
 - per-rule classify tests for every entry in `config/knowledge_base.yml`
-- end-to-end clip tests that render synthetic stick-figure MP4s from YAML fixtures and drive `AnalyzeVideo` with a `FixturePoseEstimator` (no YOLO dependency)
+- end-to-end clip tests that render synthetic stick-figure MP4s from YAML fixtures and drive `AnalyzeVideo` with a `FixturePoseEstimator` (no YOLO dependency). These use raw authored poses for strict rule/phase expectations; smoothing is covered separately by CLI and use-case tests.
 
 ## Working with AI assistants
 

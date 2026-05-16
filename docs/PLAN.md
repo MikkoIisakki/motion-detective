@@ -2,7 +2,7 @@
 
 **Vision**: a gym-ready app where you record a lift, get an annotated video, and receive actionable technique feedback.
 
-**Current date**: 2026-05-15
+**Current date**: 2026-05-16
 **Current phase**: Phase 2 complete; ready to start Phase 3 — Gym Usability
 
 ---
@@ -41,10 +41,10 @@ Goal: stable offline analysis for one uploaded video with useful overlay output.
 |---|---|---|---|
 | 1.1 | Standardize pipeline stages: validate → detect → pose → angles → render | ✅ Done | Clean Architecture: domain / ports / adapters / use_cases |
 | 1.2 | Add confidence gating and fallback logic for low-confidence joints | ⬜ Todo | YOLO confidence threshold exists; per-joint gating not yet |
-| 1.3 | Smooth keypoints/angles to reduce jitter (temporal filter) | ✅ Done | `KeypointSmoother` (EMA, alpha configurable via `--smoothing`); also bridges brief occlusions |
+| 1.3 | Smooth keypoints/angles to reduce jitter (temporal filter) | ✅ Done | `KeypointSmoother` (EMA, alpha configurable via validated `--smoothing`); resets per `AnalyzeVideo.execute()` and bridges brief occlusions |
 | 1.4 | Add lift-segment markers (setup, pull, catch/lockout where possible) | ✅ Done | `PhaseDetector` (idle → setup → first_pull → second_pull → catch → recovery) |
 | 1.5 | CLI command for full analysis with reproducible output artifact | ✅ Done | `main.py --lift snatch --knowledge-base config/knowledge_base.yml` |
-| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 134 tests passing, 92% coverage; integration tests with real sample videos |
+| 1.6 | Unit tests for angle math + integration tests for video processing path | ✅ Done | 341 tests passing, 95% coverage; integration tests with real sample videos |
 
 ### Exit Criteria
 
@@ -65,7 +65,7 @@ Goal: convert angles and motion into clear coaching cues.
 | 2.2 | Implement rule engine using per-frame + per-phase thresholds | ✅ Done | `KnowledgeBase` + `ClassifyFrame` + `AnalyzeLift` |
 | 2.3 | Generate human-readable feedback with timestamps and severity | ✅ Done | `AnalyzeVideo` now emits session-level timestamped/severity feedback summary in `analyze` CLI output |
 | 2.4 | Export session report (JSON + human summary + annotated video) | ✅ Done | `analyze` now writes annotated video + JSON (`*_report.json`) + summary text (`*_summary.txt`) |
-| 2.5 | Add regression tests for each rule using curated clips | ✅ Done | Two-tier suite in `tests/regression/`: per-rule classify regression covers every rule in the KB (incl. unreachable phases); 7 synthetic stick-figure MP4 clips drive `AnalyzeVideo` end-to-end through every reachable phase incl. a clean "perfect rep" negative case |
+| 2.5 | Add regression tests for each rule using curated clips | ✅ Done | Two-tier suite in `tests/regression/`: per-rule classify regression covers every rule in the KB (incl. unreachable phases); 7 synthetic stick-figure MP4 clips drive `AnalyzeVideo` end-to-end through every reachable phase incl. a clean "perfect rep" negative case. Clip fixtures use raw authored poses for strict rule/phase expectations; smoothing is pinned by CLI/use-case tests. |
 
 ### Exit Criteria
 

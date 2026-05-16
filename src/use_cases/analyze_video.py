@@ -67,6 +67,8 @@ class AnalyzeVideo:
 
     def execute(self, input_path: str, output_path: str) -> AnalyzeVideoResult:
         self._validator.validate(input_path)
+        if self._smoother is not None:
+            self._smoother.reset()
 
         meta = self._reader.open(input_path)
         self._writer.open(output_path, meta)

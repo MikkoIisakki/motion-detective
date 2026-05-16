@@ -158,6 +158,33 @@ class TestAnalyzeVideo:
         # Second frame: smoothed (0.5*200 + 0.5*100, same for y) → (150, 150)
         assert renderer.calls[1][1].get("nose").as_tuple() == (150, 150)
 
+    def test_smoother_resets_between_execute_calls(self):
+        from src.domain.keypoint_smoother import KeypointSmoother
+
+        class SequencePoseEstimator(PoseEstimatorPort):
+            def __init__(self):
+                self._poses = [
+                    Pose([Keypoint("nose", 100, 100)]),
+                    Pose([Keypoint("nose", 300, 300)]),
+                ]
+
+            def estimate(self, frame, bbox):
+                return self._poses.pop(0)
+
+        renderer = FakeRenderer()
+        uc = make_use_case(
+            detector=FakeDetector(BBox(0, 0, 50, 50)),
+            pose_estimator=SequencePoseEstimator(),
+            renderer=renderer,
+            smoother=KeypointSmoother(alpha=0.5),
+        )
+
+        uc.execute("first.mp4", "first_out.mp4")
+        uc.execute("second.mp4", "second_out.mp4")
+
+        assert renderer.calls[0][1].get("nose").as_tuple() == (100, 100)
+        assert renderer.calls[1][1].get("nose").as_tuple() == (300, 300)
+
     def test_writer_opened_with_correct_output_path(self):
         writer = FakeWriter()
         uc = make_use_case(writer=writer)

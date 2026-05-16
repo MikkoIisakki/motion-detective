@@ -32,12 +32,12 @@ docs/PLAN.md     # phased roadmap; the authoritative status doc
 
 ## Test approach
 
-Run with `uv run python -m pytest -q` (335+ tests, ~1.5s). Coverage stays at ≥95% over `src/`.
+Run with `uv run python -m pytest -q` (341 tests, ~2s). Coverage stays at ≥95% over `src/`.
 
 The **regression suite** under `tests/regression/` is two-tiered:
 
 1. **Per-rule classify regression** ([test_rule_classify_regression.py](tests/regression/test_rule_classify_regression.py)) parametrizes over every rule in `config/knowledge_base.yml` and asserts good/warning/fault classification + non-empty feedback + known priority. This is the comprehensive coverage net — including phases the phase detector can't currently reach.
-2. **End-to-end clip regression** ([test_rule_regression.py](tests/regression/test_rule_regression.py)) loads YAML fixtures under [tests/regression/fixtures/](tests/regression/fixtures/), renders them to stick-figure MP4s in [tests/regression/clips/](tests/regression/clips/), and runs `AnalyzeVideo` end-to-end via real OpenCV I/O with a `FixturePoseEstimator` injected in place of YOLO. Strict-matches expected findings.
+2. **End-to-end clip regression** ([test_rule_regression.py](tests/regression/test_rule_regression.py)) loads YAML fixtures under [tests/regression/fixtures/](tests/regression/fixtures/), renders them to stick-figure MP4s in [tests/regression/clips/](tests/regression/clips/), and runs `AnalyzeVideo` end-to-end via real OpenCV I/O with a `FixturePoseEstimator` injected in place of YOLO. It intentionally uses raw authored poses so rule/phase expectations strict-match; smoothing behavior is covered by CLI parser tests and `AnalyzeVideo` use-case tests.
 
 Supporting modules:
 - [synthetic_pose.py](tests/regression/synthetic_pose.py) — `build_side_pose(PoseSpec)` turns joint angles into a 2-D side-view pose. Two arm modes: natural and anchored-wrist (isoceles-triangle elbow placement) for clips that need to pin `wrist_y` for phase detection without distorting the elbow rule.
