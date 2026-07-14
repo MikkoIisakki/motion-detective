@@ -1,0 +1,71 @@
+# Two back-to-back snatches: rep 1 is executed cleanly, rep 2 bends the
+# elbows early in the second pull (snatch.second_pull.elbow_angle FAULT
+# [0, 145]). Pins multi-rep re-entry: lowering the bar below the knees while
+# the hips descend back to setup depth takes the detector from the first
+# rep's recovery into a fresh SETUP, so the second rep's fault is detected
+# per-rep instead of the recovery phase swallowing the rest of the clip.
+clip:
+  name: snatch_two_reps
+  lift: snatch
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  # ---- Rep 1: every reachable phase in its good band ----
+  - count: 5
+    pose:
+      knee_angle: 90       # setup good [70, 100]
+      hip_angle: 50        # setup good [40, 60]
+      elbow_angle: 180
+      wrist_y_offset: 0
+  - count: 5
+    pose:
+      knee_angle: 120      # first_pull good [100, 150]
+      hip_angle: 90        # first_pull good [70, 110]
+      elbow_angle: 180
+      wrist_y_offset: -50
+  - count: 5
+    pose:
+      knee_angle: 170      # second_pull good [155, 180]
+      hip_angle: 170       # second_pull good [160, 180]
+      elbow_angle: 180     # second_pull good [165, 180]
+      wrist_y_offset: -260
+  - count: 5
+    pose:
+      knee_angle: 80       # catch good [60, 100]
+      hip_angle: 70        # catch good [55, 90]
+      elbow_angle: 180     # catch good [170, 180]
+      wrist_y_offset: -280
+  - count: 5
+    pose:
+      knee_angle: 170      # recovery good [165, 180]
+      hip_angle: 170       # recovery good [160, 180]
+      elbow_angle: 180
+      wrist_y_offset: -280
+  # ---- Bar drops below the knees, hips descend -> re-entry into SETUP ----
+  - count: 5
+    pose:
+      knee_angle: 90       # setup good again — rep 2 begins
+      hip_angle: 50
+      elbow_angle: 180
+      wrist_y_offset: 0
+  # ---- Rep 2: same pull, but the elbows break early in the second pull ----
+  - count: 5
+    pose:
+      knee_angle: 120      # first_pull good
+      hip_angle: 90
+      elbow_angle: 180
+      wrist_y_offset: -50
+  - count: 20
+    pose:
+      knee_angle: 170      # second_pull knee good — isolate the elbow fault
+      hip_angle: 170       # second_pull hip good
+      elbow_angle: 100     # second_pull elbow FAULT [0, 145]
+      wrist_y_offset: -260
+
+expected:
+  - phase: second_pull
+    severity: FAULT
+    priority: performance
+    feedback_substring: "pulling early wastes the drive"

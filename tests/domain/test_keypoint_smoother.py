@@ -1,4 +1,6 @@
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from src.domain.keypoint_smoother import KeypointSmoother
 from src.domain.models import Keypoint, Pose
@@ -71,3 +73,24 @@ class TestKeypointSmoother:
         smoother.reset()
         out = smoother.smooth(Pose([Keypoint("nose", 999, 999)]))
         assert out.get("nose").as_tuple() == (999, 999)
+
+
+_pixel = st.integers(min_value=-10_000, max_value=10_000)
+
+
+class TestKeypointSmootherProperties:
+    """EMA invariant: a smoothed coordinate is a (rounded) convex combination
+    of the previous smoothed value and the new observation, so it can never
+    overshoot either — it always lies in [min(prev, new), max(prev, new)]."""
+
+    @given(
+        alpha=st.floats(min_value=0.0, max_value=1.0),
+        prev_x=_pixel, prev_y=_pixel, new_x=_pixel, new_y=_pixel,
+    )
+    def test_smoothed_coordinates_lie_between_previous_and_new(self, alpha, prev_x, prev_y, new_x, new_y):
+        smoother = KeypointSmoother(alpha=alpha)
+        smoother.smooth(Pose([Keypoint("nose", prev_x, prev_y)]))
+        out = smoother.smooth(Pose([Keypoint("nose", new_x, new_y)]))
+        kp = out.get("nose")
+        assert min(prev_x, new_x) <= kp.x <= max(prev_x, new_x)
+        assert min(prev_y, new_y) <= kp.y <= max(prev_y, new_y)

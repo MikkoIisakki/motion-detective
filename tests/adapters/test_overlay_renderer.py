@@ -1,10 +1,13 @@
-import numpy as np
-import pytest
+from pathlib import Path
 
-from src.adapters.overlay_renderer import OverlayRenderer
+import cv2
+import numpy as np
+
+from src.adapters.overlay_renderer import OverlayRenderer, _angle_label
+from src.domain.analysis import FrameAnalysis
+from src.domain.angle_math import ANGLE_DEFINITIONS
 from src.domain.faults import FaultPriority, FaultResult, FaultSeverity, JointMeasurement, LiftPhase
 from src.domain.models import BBox, Keypoint, Pose
-from src.use_cases.analyze_lift import FrameAnalysis
 
 
 def blank_frame(h=240, w=320):
@@ -121,3 +124,86 @@ class TestOverlayRenderer:
         frame = blank_frame(480, 640)
         out = self.renderer.render(frame, BBox(100, 20, 200, 400), full_pose())
         assert out.shape == frame.shape
+
+
+_GOLDEN_PATH = Path(__file__).parent / "golden" / "overlay_full_frame.png"
+
+
+def gradient_background(h=240, w=320):
+    """Deterministic non-uniform background so the golden also pins blending
+    against real pixel content, not just drawing onto black."""
+    yy, xx = np.mgrid[0:h, 0:w]
+    blue = (xx * 255 // (w - 1)).astype(np.uint8)
+    green = (yy * 255 // (h - 1)).astype(np.uint8)
+    red = ((xx + yy) * 255 // (w + h - 2)).astype(np.uint8)
+    return np.dstack([blue, green, red])
+
+
+def full_frame_analysis():
+    return FrameAnalysis(
+        phase=LiftPhase.CATCH,
+        measurements=[JointMeasurement("knee_angle", 90.0), JointMeasurement("elbow_angle", 150.0)],
+        faults=[
+            FaultResult(
+                joint="knee_angle",
+                severity=FaultSeverity.FAULT,
+                priority=FaultPriority.SAFETY,
+                feedback="Catch deeper",
+            ),
+            FaultResult(
+                joint="elbow_angle",
+                severity=FaultSeverity.WARNING,
+                priority=FaultPriority.EFFICIENCY,
+                feedback="Lock out the elbows",
+            ),
+        ],
+    )
+
+
+class TestOverlayGoldenFrame:
+    """Pins the exact rendered pixels of a fully-populated frame (bbox + pose
+    + analysis with a FAULT and a WARNING) against a committed reference PNG.
+
+    Exact pixel equality is used: OpenCV's Hershey fonts and anti-aliased
+    primitives are drawn with its own fixed-point integer rasterizer (no
+    system font stack), so output is deterministic for the pinned
+    opencv-contrib-python version — verified by the determinism test below.
+
+    To regenerate after an intentional rendering change: delete
+    tests/adapters/golden/overlay_full_frame.png and rerun this test (a
+    missing golden is rewritten from the current renderer output — inspect
+    the new PNG visually and commit it).
+    """
+
+    def _render_full_frame(self):
+        renderer = OverlayRenderer()
+        return renderer.render(
+            gradient_background(),
+            BBox(100, 20, 120, 210),
+            full_pose(),
+            full_frame_analysis(),
+        )
+
+    def test_render_is_deterministic(self):
+        np.testing.assert_array_equal(self._render_full_frame(), self._render_full_frame())
+
+    def test_full_frame_render_matches_golden(self):
+        out = self._render_full_frame()
+        if not _GOLDEN_PATH.exists():
+            _GOLDEN_PATH.parent.mkdir(exist_ok=True)
+            cv2.imwrite(str(_GOLDEN_PATH), out)
+        golden = cv2.imread(str(_GOLDEN_PATH), cv2.IMREAD_COLOR)
+        assert golden is not None, f"unreadable golden file: {_GOLDEN_PATH}"
+        np.testing.assert_array_equal(out, golden)
+
+
+class TestAngleLabel:
+    def test_derives_panel_labels_from_the_shared_angle_definitions(self):
+        assert [_angle_label(d) for d in ANGLE_DEFINITIONS] == [
+            "Knee L",
+            "Knee R",
+            "Hip L",
+            "Hip R",
+            "Elbow L",
+            "Elbow R",
+        ]

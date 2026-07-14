@@ -1,0 +1,23 @@
+# Clean setup with the hips way too high — back nearly horizontal over the
+# bar (hip ~120, clean_and_jerk.setup.hip_angle FAULT [80, 180]). Knee bend
+# stays in the good band so only the hip rule fires.
+clip:
+  name: cnj_setup_hip_too_high
+  lift: clean_and_jerk
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 30
+    pose:
+      knee_angle: 90       # setup.knee_angle good [70, 100]
+      hip_angle: 120       # setup.hip_angle FAULT [80, 180]
+      elbow_angle: 180
+      wrist_y_offset: 0    # wrist at ankle level -> SETUP
+
+expected:
+  - phase: setup
+    severity: FAULT
+    priority: performance
+    feedback_substring: "Lower your hips in the setup"

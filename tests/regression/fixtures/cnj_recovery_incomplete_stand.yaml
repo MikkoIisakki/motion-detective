@@ -1,0 +1,52 @@
+# Clean recovered without standing up fully — the knees lock (170, good
+# [165, 180]) but the torso stays pitched forward (hip ~120,
+# clean_and_jerk.recovery.hip_angle FAULT [0, 140]), so only the hip rule
+# fires. The bar stays racked and the hips never re-descend, so the detector
+# holds RECOVERY and no jerk phases begin.
+clip:
+  name: cnj_recovery_incomplete_stand
+  lift: clean_and_jerk
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 5
+    pose:
+      knee_angle: 90       # setup: good
+      hip_angle: 55
+      elbow_angle: 180
+      wrist_y_offset: 0
+  - count: 5
+    pose:
+      knee_angle: 120      # first_pull: good
+      hip_angle: 90
+      elbow_angle: 180
+      wrist_y_offset: -50
+  - count: 5
+    pose:
+      knee_angle: 170      # second_pull: good
+      hip_angle: 170
+      elbow_angle: 180
+      wrist_y_offset: -260
+  - count: 5
+    pose:
+      knee_angle: 80       # clean catch: good front rack
+      hip_angle: 70
+      elbow_angle: 30
+      wrist_y_offset: -201
+  # RECOVERY: hips rise out of the catch but the lifter stalls bent over —
+  # hip 120 is in recovery.hip_angle FAULT [0, 140]. Wrist at -270 keeps the
+  # bar racked at shoulder height for this leaned-forward stance.
+  - count: 15
+    pose:
+      knee_angle: 170      # recovery.knee_angle good [165, 180]
+      hip_angle: 120       # recovery.hip_angle FAULT [0, 140]
+      elbow_angle: 30
+      wrist_y_offset: -270
+
+expected:
+  - phase: recovery
+    severity: FAULT
+    priority: efficiency
+    feedback_substring: "Stand all the way up before initiating the jerk"

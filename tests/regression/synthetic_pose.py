@@ -29,7 +29,6 @@ from dataclasses import dataclass
 
 from src.domain.models import Keypoint, Pose
 
-
 SHIN_LEN = 100
 THIGH_LEN = 100
 TORSO_LEN = 100

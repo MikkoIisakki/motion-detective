@@ -5,7 +5,8 @@ figure clip + a list of expected findings. The clip MP4 is rendered (and
 cached) under ``tests/regression/clips/``. The test runs ``AnalyzeVideo``
 through the real OpenCV reader/writer with a ``FixturePoseEstimator`` injected
 in place of YOLO, then asserts the expected findings appear in the feedback
-summary and no unexpected findings sneak in.
+summary and no unexpected findings sneak in. Clean & jerk fixtures drive the
+full phase chain through the jerk dip and jerk catch.
 
 YOLO/HOG are bypassed on purpose: the goal is to regress the rule + phase
 engine, not the model. The MP4s are checked into the repo so contributors can
@@ -30,7 +31,6 @@ from src.use_cases.analyze_video import AnalyzeVideo, AnalyzeVideoResult
 from tests.regression.clip_fixture import ClipFixture, ExpectedFinding, load_fixture
 from tests.regression.fixture_pose_estimator import FixturePoseEstimator
 from tests.regression.synthetic_clip import render_clip
-
 
 REGRESSION_DIR = Path(__file__).parent
 FIXTURES_DIR = REGRESSION_DIR / "fixtures"

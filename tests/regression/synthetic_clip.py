@@ -13,7 +13,6 @@ import numpy as np
 
 from src.domain.models import Pose
 
-
 _SKELETON_SEGMENTS = [
     ("left_ankle", "left_knee"),
     ("left_knee", "left_hip"),

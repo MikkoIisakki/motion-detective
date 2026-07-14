@@ -4,11 +4,9 @@ feedback string with a known priority.
 
 This is the comprehensive coverage net. The end-to-end clip tests in
 `test_rule_regression.py` complement this by exercising the phase detector +
-summary formatting on actual MP4s, but they only reach phases the phase
-detector can land in (setup, first_pull, second_pull, catch, recovery). The
-classify regression covers everything in the YAML including the currently
-unreachable phases (transition, jerk_dip, jerk_catch) so they don't silently
-rot.
+summary formatting on actual MP4s. Every phase in the YAML (including
+transition, jerk_dip and jerk_catch) is reachable by the phase detector, so
+this suite and the clip suite together keep all rules honest.
 """
 from __future__ import annotations
 
@@ -16,11 +14,14 @@ from pathlib import Path
 
 import pytest
 
-from src.domain.faults import FaultPriority, FaultSeverity, LiftPhase
+from src.domain.faults import (
+    FaultPriority,
+    FaultSeverity,
+    JointMeasurement,
+    LiftPhase,
+)
 from src.domain.knowledge_base import KnowledgeBase, RuleSpec
 from src.use_cases.classify_frame import ClassifyFrame
-from src.domain.faults import JointMeasurement
-
 
 KB_PATH = Path(__file__).resolve().parents[2] / "config" / "knowledge_base.yml"
 

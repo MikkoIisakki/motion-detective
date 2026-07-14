@@ -1,0 +1,38 @@
+# Clean second pull cut short — the hips never finish extending (~120 deg,
+# clean_and_jerk.second_pull.hip_angle FAULT [0, 140]) while the arms stay
+# long (elbow 180, good [165, 180]) so only the hip rule fires.
+clip:
+  name: cnj_second_pull_incomplete_hip_drive
+  lift: clean_and_jerk
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 5
+    pose:
+      knee_angle: 90       # setup: good
+      hip_angle: 55
+      elbow_angle: 180
+      wrist_y_offset: 0
+  - count: 5
+    pose:
+      knee_angle: 120      # first_pull: good
+      hip_angle: 90
+      elbow_angle: 180
+      wrist_y_offset: -50
+  # SECOND_PULL: knees extend (no cnj second_pull knee rule) but the hips stop
+  # at 120 deg. Wrist at -230 lands inside the second-pull band below shoulder
+  # height for this bent-over pose (shoulder_y ~= 137).
+  - count: 20
+    pose:
+      knee_angle: 170
+      hip_angle: 120       # second_pull.hip_angle FAULT [0, 140]
+      elbow_angle: 180     # second_pull.elbow_angle good [165, 180]
+      wrist_y_offset: -230
+
+expected:
+  - phase: second_pull
+    severity: FAULT
+    priority: performance
+    feedback_substring: "Drive the hips through completely"

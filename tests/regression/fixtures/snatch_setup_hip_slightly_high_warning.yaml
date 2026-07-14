@@ -1,0 +1,24 @@
+# Snatch setup with the hips a touch high — inside the WARNING band, not the
+# fault band (hip 68, snatch.setup.hip_angle warning [60, 75]). Pins the
+# WARNING severity path end to end: band classification, actionable-warning
+# grouping, and the [WARNING/...] summary formatting.
+clip:
+  name: snatch_setup_hip_slightly_high_warning
+  lift: snatch
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 30
+    pose:
+      knee_angle: 90       # setup.knee_angle good [70, 100]
+      hip_angle: 71        # setup.hip_angle WARNING [60, 75] (measures ~67)
+      elbow_angle: 180
+      wrist_y_offset: 0    # wrist at ankle level -> SETUP
+
+expected:
+  - phase: setup
+    severity: WARNING
+    priority: performance
+    feedback_substring: "Set your hips lower"

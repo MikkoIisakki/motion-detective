@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from src.domain.models import BBox, Keypoint, Pose
 from tests.regression.fixture_pose_estimator import FixturePoseEstimator

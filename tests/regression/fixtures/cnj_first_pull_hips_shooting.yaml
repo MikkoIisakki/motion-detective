@@ -1,0 +1,32 @@
+# Clean first pull with hips shooting up early — hip angle collapses to ~30
+# deg while the bar is still below the knee.
+# Targets clean_and_jerk.first_pull.hip_angle FAULT band (0 - 50 deg); knee
+# stays in the first_pull good band so only the hip rule fires.
+clip:
+  name: cnj_first_pull_hips_shooting
+  lift: clean_and_jerk
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  # SETUP: clean start position, no faults.
+  - count: 5
+    pose:
+      knee_angle: 90        # setup.knee_angle good [70, 100]
+      hip_angle: 55         # setup.hip_angle good [45, 65]
+      elbow_angle: 180
+      wrist_y_offset: 0     # wrist at ankle level -> SETUP
+  # FIRST_PULL: bar rising but still below the knees; hips shoot up.
+  - count: 20
+    pose:
+      knee_angle: 120       # first_pull.knee_angle good [100, 150]
+      hip_angle: 30         # first_pull.hip_angle FAULT [0, 50]
+      elbow_angle: 180
+      wrist_y_offset: -40   # rising, still below knee height -> FIRST_PULL
+
+expected:
+  - phase: first_pull
+    severity: FAULT
+    priority: performance
+    feedback_substring: "hips from shooting up early"

@@ -6,8 +6,6 @@ is loose (~2°) because keypoints are quantised to integer pixels.
 """
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from src.domain.angle_math import joint_angle

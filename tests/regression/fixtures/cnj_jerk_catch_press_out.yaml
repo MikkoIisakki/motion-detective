@@ -1,0 +1,61 @@
+# Clean & jerk received overhead with soft elbows — elbow ~140 deg in the
+# jerk catch (jerk_catch.elbow_angle FAULT [0, 160]). The split depth is good
+# (knee 120 in [100, 140]) so only the elbow rule fires.
+clip:
+  name: cnj_jerk_catch_press_out
+  lift: clean_and_jerk
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 5
+    pose:
+      knee_angle: 90       # setup: good
+      hip_angle: 55
+      elbow_angle: 180
+      wrist_y_offset: 0
+  - count: 5
+    pose:
+      knee_angle: 120      # first_pull: good
+      hip_angle: 90
+      elbow_angle: 180
+      wrist_y_offset: -50
+  - count: 5
+    pose:
+      knee_angle: 170      # second_pull: good
+      hip_angle: 170
+      elbow_angle: 180
+      wrist_y_offset: -260
+  - count: 5
+    pose:
+      knee_angle: 80       # clean catch: good front rack
+      hip_angle: 70
+      elbow_angle: 30
+      wrist_y_offset: -201
+  - count: 5
+    pose:
+      knee_angle: 170      # clean recovery: good, bar racked
+      hip_angle: 170
+      elbow_angle: 30
+      wrist_y_offset: -318
+  - count: 5
+    pose:
+      knee_angle: 155      # jerk dip: good
+      hip_angle: 170
+      elbow_angle: 30
+      wrist_y_offset: -307
+  # JERK_CATCH: bar overhead but the elbows never lock out — elbow 140 is in
+  # jerk_catch.elbow_angle FAULT [0, 160].
+  - count: 15
+    pose:
+      knee_angle: 120
+      hip_angle: 140
+      elbow_angle: 140
+      wrist_y_offset: -344
+
+expected:
+  - phase: jerk_catch
+    severity: FAULT
+    priority: safety
+    feedback_substring: "soft lockout is a safety fault"

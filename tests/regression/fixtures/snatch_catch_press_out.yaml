@@ -1,0 +1,42 @@
+# Snatch caught overhead with soft elbows — the lockout never lands (elbow
+# ~120, snatch.catch.elbow_angle FAULT [0, 160]). Squat depth is good (knee 80
+# in [60, 100], hip 70 in [55, 90]) so only the elbow rule fires.
+clip:
+  name: snatch_catch_press_out
+  lift: snatch
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 5
+    pose:
+      knee_angle: 90       # setup: good
+      hip_angle: 50
+      elbow_angle: 180
+      wrist_y_offset: 0
+  - count: 5
+    pose:
+      knee_angle: 120      # first_pull: good
+      hip_angle: 80
+      elbow_angle: 180
+      wrist_y_offset: -50
+  - count: 5
+    pose:
+      knee_angle: 170      # second_pull: good
+      hip_angle: 170
+      elbow_angle: 180
+      wrist_y_offset: -260
+  # CATCH: deep overhead squat but the elbows sit at 120 deg — a press-out.
+  - count: 15
+    pose:
+      knee_angle: 80       # catch.knee_angle good [60, 100]
+      hip_angle: 70        # catch.hip_angle good [55, 90]
+      elbow_angle: 120     # catch.elbow_angle FAULT [0, 160]
+      wrist_y_offset: -280
+
+expected:
+  - phase: catch
+    severity: FAULT
+    priority: safety
+    feedback_substring: "soft lockout risks shoulder injury"

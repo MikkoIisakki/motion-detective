@@ -1,0 +1,56 @@
+# Clean & jerk with a forward lean in the jerk dip — the torso pitches
+# forward (hip_angle ~120, jerk_dip.hip_angle FAULT [0, 140]) while the knees
+# dip correctly, so only the hip rule fires.
+clip:
+  name: cnj_jerk_dip_forward_lean
+  lift: clean_and_jerk
+  fps: 30
+  width: 640
+  height: 480
+
+frames:
+  - count: 5
+    pose:
+      knee_angle: 90       # setup: good
+      hip_angle: 55
+      elbow_angle: 180
+      wrist_y_offset: 0
+  - count: 5
+    pose:
+      knee_angle: 120      # first_pull: good
+      hip_angle: 90
+      elbow_angle: 180
+      wrist_y_offset: -50
+  - count: 5
+    pose:
+      knee_angle: 170      # second_pull: good
+      hip_angle: 170
+      elbow_angle: 180
+      wrist_y_offset: -260
+  - count: 5
+    pose:
+      knee_angle: 80       # clean catch: good front rack
+      hip_angle: 70
+      elbow_angle: 30
+      wrist_y_offset: -201
+  - count: 5
+    pose:
+      knee_angle: 170      # clean recovery: good, bar racked
+      hip_angle: 170
+      elbow_angle: 30
+      wrist_y_offset: -318
+  # JERK_DIP: hips descend with the bar racked, but the torso leans forward —
+  # hip_angle 120 is in jerk_dip.hip_angle FAULT [0, 140]. Knee 155 stays in
+  # the good dip band [145, 165].
+  - count: 15
+    pose:
+      knee_angle: 155
+      hip_angle: 120
+      elbow_angle: 30
+      wrist_y_offset: -293
+
+expected:
+  - phase: jerk_dip
+    severity: FAULT
+    priority: performance
+    feedback_substring: "Keep the torso vertical in the dip"
