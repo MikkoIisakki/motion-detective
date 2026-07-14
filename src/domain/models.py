@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,7 @@ class Keypoint:
 @dataclass(frozen=True)
 class Pose:
     keypoints: tuple[Keypoint, ...]
+    _index: dict[str, Keypoint] = field(repr=False, compare=False)
 
     def __init__(self, keypoints: Sequence[Keypoint]) -> None:
         object.__setattr__(self, "keypoints", tuple(keypoints))
