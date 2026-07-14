@@ -1,18 +1,27 @@
-import pytest
 from src.domain.faults import (
+    AngleThreshold,
     FaultPriority,
     FaultResult,
     FaultSeverity,
-    LiftPhase,
     JointMeasurement,
-    AngleThreshold,
+    LiftPhase,
 )
 
 
 class TestLiftPhase:
     def test_all_phases_defined(self):
         phases = {p.value for p in LiftPhase}
-        assert phases == {"idle", "setup", "first_pull", "transition", "second_pull", "catch", "recovery"}
+        assert phases == {
+            "idle",
+            "setup",
+            "first_pull",
+            "transition",
+            "second_pull",
+            "catch",
+            "recovery",
+            "jerk_dip",
+            "jerk_catch",
+        }
 
 
 class TestFaultSeverity:

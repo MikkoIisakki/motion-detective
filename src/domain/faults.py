@@ -12,6 +12,8 @@ class LiftPhase(str, Enum):
     SECOND_PULL = "second_pull"
     CATCH = "catch"
     RECOVERY = "recovery"
+    JERK_DIP = "jerk_dip"
+    JERK_CATCH = "jerk_catch"
 
 
 class FaultSeverity(int, Enum):
