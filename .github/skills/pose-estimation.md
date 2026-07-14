@@ -39,23 +39,16 @@ COCO_KEYPOINTS = {
 
 ### Keypoint Confidence
 
-YOLOv8 returns `keypoints.xyn` (normalized) and `keypoints.conf` (confidence per keypoint, 0–1). Always filter by confidence before using a keypoint for angle computation:
+YOLOv8 returns `keypoints.xy` and `keypoints.conf` (confidence per keypoint, 0–1). `YoloPoseEstimator._build_pose` (src/adapters/yolo_pose_estimator.py) carries that confidence onto each domain `Keypoint`; confidence filtering then happens in the domain via `gate_keypoints`:
 
 ```python
-MIN_KEYPOINT_CONFIDENCE = 0.5  # config value, not magic number
-
-def get_keypoint(
-    keypoints_xy: np.ndarray,
-    keypoints_conf: np.ndarray,
-    index: int,
-) -> tuple[float, float] | None:
-    if keypoints_conf[index] < MIN_KEYPOINT_CONFIDENCE:
-        return None
-    x, y = keypoints_xy[index]
-    return float(x), float(y)
+# src/domain/joint_gate.py — real implementation
+def gate_keypoints(pose: Pose, min_confidence: float) -> Pose:
+    """Return a Pose containing only keypoints with confidence >= min_confidence."""
+    return Pose([kp for kp in pose.keypoints if kp.confidence >= min_confidence])
 ```
 
-If a required keypoint has confidence below threshold, mark the corresponding angle as unavailable (`None`), not zero. A zero angle is a valid angle.
+The threshold is a CLI flag, not a magic number: `--min-joint-confidence` (default 0.0 = gating off). Gated keypoints become *absent* from the `Pose` — downstream code sees a missing joint (angle simply not measured that frame), never a zero angle. A zero angle is a valid angle.
 
 ---
 
@@ -63,77 +56,73 @@ If a required keypoint has confidence below threshold, mark the corresponding an
 
 ### Three-Point Joint Angle
 
-Angle at joint B, formed by segments BA and BC:
+Angle at joint B, formed by segments BA and BC — the real implementation:
 
 ```python
-import numpy as np
+# src/domain/angle_math.py
+def joint_angle(a: Keypoint, b: Keypoint, c: Keypoint) -> float:
+    """Return the angle ABC in degrees, where B is the vertex joint.
 
-def joint_angle(
-    a: tuple[float, float],
-    b: tuple[float, float],
-    c: tuple[float, float],
-) -> float:
-    """Angle at B in degrees. Returns 0.0 if degenerate."""
-    ba = np.array([a[0] - b[0], a[1] - b[1]], dtype=np.float64)
-    bc = np.array([c[0] - b[0], c[1] - b[1]], dtype=np.float64)
-    denom = np.linalg.norm(ba) * np.linalg.norm(bc)
-    if denom < 1e-6:
+    Returns 0.0 when either vector has zero length (coincident points).
+    """
+    ba_x, ba_y = a.x - b.x, a.y - b.y
+    bc_x, bc_y = c.x - b.x, c.y - b.y
+
+    denom = math.hypot(ba_x, ba_y) * math.hypot(bc_x, bc_y)
+    if denom == 0.0:
         return 0.0
-    cos_angle = np.clip(np.dot(ba, bc) / denom, -1.0, 1.0)
-    return float(np.degrees(np.arccos(cos_angle)))
+
+    cos_angle = (ba_x * bc_x + ba_y * bc_y) / denom
+    cos_angle = max(-1.0, min(1.0, cos_angle))
+    return math.degrees(math.acos(cos_angle))
 ```
 
-### Torso Angle (Back Angle)
+### Measured Joints
 
-Back angle = angle of the torso relative to vertical (or horizontal). Use shoulder midpoint and hip midpoint:
+The angles the pipeline actually measures are defined once, in `ANGLE_DEFINITIONS` (src/domain/angle_math.py), and averaged over left/right sides:
 
 ```python
-def torso_angle_from_vertical(
-    shoulder_mid: tuple[float, float],
-    hip_mid: tuple[float, float],
-) -> float:
-    """0° = vertical torso, 90° = horizontal (lying down)."""
-    dx = shoulder_mid[0] - hip_mid[0]
-    dy = shoulder_mid[1] - hip_mid[1]  # y increases downward in image coords
-    # dy is negative when shoulder is above hip (normal standing)
-    angle_from_vertical = float(np.degrees(np.arctan2(abs(dx), abs(dy))))
-    return angle_from_vertical
+# (joint_name, vertex_a, vertex_b, vertex_c) — angle ABC at vertex B
+knee_angle  = angle(hip, knee, ankle)
+hip_angle   = angle(shoulder, hip, knee)
+elbow_angle = angle(shoulder, elbow, wrist)
 ```
 
-Note: image coordinates have y=0 at top. Correct for this in all angle computations.
+A torso-from-vertical back angle is a candidate future measurement (not yet implemented) — it would need the same three-band KB treatment as the existing joints.
+
+Note: image coordinates have y=0 at top. State the coordinate system in every geometry function.
 
 ---
 
 ## Temporal Smoothing
 
-Raw keypoint outputs are noisy, especially at high movement speeds (second pull is very fast). Apply a sliding window mean or exponential moving average:
+Raw keypoint outputs are noisy, especially at high movement speeds (second pull is very fast). The real implementation is an exponential moving average:
 
 ```python
-from collections import deque
-
+# src/domain/keypoint_smoother.py (abridged)
 class KeypointSmoother:
-    def __init__(self, window: int = 5) -> None:
-        self._buffers: dict[str, deque[tuple[float, float]]] = {}
-        self._window = window
+    """Exponential moving average over keypoint positions.
 
-    def update(self, name: str, point: tuple[float, float]) -> tuple[float, float]:
-        if name not in self._buffers:
-            self._buffers[name] = deque(maxlen=self._window)
-        self._buffers[name].append(point)
-        xs = [p[0] for p in self._buffers[name]]
-        ys = [p[1] for p in self._buffers[name]]
-        return float(np.mean(xs)), float(np.mean(ys))
+    For each keypoint name, smoothed = alpha * new + (1 - alpha) * previous.
+    alpha=1.0 disables smoothing; alpha=0.0 freezes at the first value.
+    Missing keypoints in a new pose are filled from the last known state
+    (handles brief occlusions / detection dropouts).
+    """
+
+    def __init__(self, alpha: float = 0.5) -> None: ...
+    def reset(self) -> None: ...
+    def smooth(self, pose: Pose) -> Pose: ...
 ```
 
-Use shorter windows (3 frames) for fast phases (second pull, catch) and longer windows (7 frames) for slow phases (setup, first pull).
+The factor is a CLI flag: `--smoothing` (default 0.5; 1.0 disables). Lower alpha = heavier smoothing but more lag — a concern in the very fast second pull. Per-phase adaptive alpha is a possible future refinement, not implemented.
 
 ---
 
 ## Bar Path Tracking
 
-**Critical limitation**: YOLOv8 COCO pose does not detect the barbell. Options in order of implementation complexity:
+**Critical limitation**: YOLOv8 COCO pose does not detect the barbell. Bar path tracking is **not yet implemented** — options in order of implementation complexity:
 
-### Option 1 (current approximation): Wrist midpoint proxy
+### Option 1 (build first): Wrist midpoint proxy
 
 ```python
 def bar_position_proxy(
@@ -164,91 +153,91 @@ Implement Option 1 first. Document Options 2 and 3 in the architect's design for
 
 ## Skeleton Drawing
 
-### Segment Definitions (for stick figure)
+Overlay drawing lives in `OverlayRenderer` (src/adapters/overlay_renderer.py). Segment definitions:
 
 ```python
-SKELETON_SEGMENTS = [
-    # Lower body
+# src/adapters/overlay_renderer.py
+_SKELETON_SEGMENTS = [
     ("left_ankle", "left_knee"),
     ("left_knee", "left_hip"),
-    ("right_ankle", "right_knee"),
-    ("right_knee", "right_hip"),
-    ("left_hip", "right_hip"),
-    # Upper body
     ("left_hip", "left_shoulder"),
-    ("right_hip", "right_shoulder"),
-    ("left_shoulder", "right_shoulder"),
     ("left_shoulder", "left_elbow"),
     ("left_elbow", "left_wrist"),
+    ("right_ankle", "right_knee"),
+    ("right_knee", "right_hip"),
+    ("right_hip", "right_shoulder"),
     ("right_shoulder", "right_elbow"),
     ("right_elbow", "right_wrist"),
-    # Head
     ("left_shoulder", "nose"),
     ("right_shoulder", "nose"),
 ]
 ```
 
-### Color Coding by Quality
+### Color Coding by Severity
+
+Severity comes from the domain — `FaultSeverity` (src/domain/faults.py: `GOOD`/`WARNING`/`FAULT`) — mapped to BGR in the renderer:
 
 ```python
-from enum import Enum
-
-class AngleQuality(Enum):
-    GOOD = "good"        # within target range
-    WARNING = "warning"  # approaching fault threshold
-    FAULT = "fault"      # outside acceptable range
-    UNKNOWN = "unknown"  # keypoint missing or low confidence
-
-QUALITY_COLORS = {
-    AngleQuality.GOOD:    (0, 200, 0),    # green
-    AngleQuality.WARNING: (0, 165, 255),  # orange
-    AngleQuality.FAULT:   (0, 0, 220),    # red
-    AngleQuality.UNKNOWN: (128, 128, 128), # gray
+# src/adapters/overlay_renderer.py
+_SEVERITY_COLOR = {
+    FaultSeverity.GOOD: (0, 255, 0),       # green
+    FaultSeverity.WARNING: (0, 200, 255),  # amber
+    FaultSeverity.FAULT: (0, 0, 255),      # red
 }
+_DEFAULT_COLOR = (0, 255, 255)  # cyan when no analysis
 ```
 
-Color-code joint circles and adjacent segments by the quality of the angle at that joint. Threshold values come from the `weightlifting-biomechanics` skill.
+The angle panel rows (`_draw_angle_panel`) are colored by the severity of the matching KB joint for the current frame's phase. Threshold values come from `config/knowledge_base.yml` (see `knowledge-base-authoring`).
 
 ---
 
 ## Phase Detection
 
-Classify the current lift phase from a sequence of keypoint frames. Use a state machine:
+`PhaseDetector` (src/domain/phase_detector.py) is a stateful per-frame state machine over `LiftPhase`, configured per lift (`PhaseDetector(lift="clean_and_jerk")` / `configure_for_lift`). The full phase model:
 
 ```
-IDLE → SETUP → FIRST_PULL → TRANSITION → SECOND_PULL → CATCH/RACK → RECOVERY → IDLE
+IDLE → SETUP → FIRST_PULL → TRANSITION → SECOND_PULL → CATCH → RECOVERY
+             (clean & jerk continues:) → JERK_DIP → JERK_CATCH → RECOVERY
 ```
 
-Transition conditions:
-- **IDLE → SETUP**: wrist height stabilizes near ankle level, person detected
-- **SETUP → FIRST_PULL**: wrist height starts increasing
-- **FIRST_PULL → TRANSITION**: knee angle starts decreasing (re-bend)
-- **TRANSITION → SECOND_PULL**: rapid joint extension velocity exceeds threshold
-- **SECOND_PULL → CATCH**: wrist height exceeds shoulder height (snatch) or wrist approaches shoulder height (clean)
-- **CATCH → RECOVERY**: hip height starts rising from catch position
-- **RECOVERY → IDLE**: hip height stable at standing level
+Signals are y-coordinates averaged over left/right pairs (`PoseSignal.from_pose`): `wrist_y`, `ankle_y`, `knee_y`, `hip_y`, `shoulder_y`. Remember image coordinates: **rising means y decreases**. All distance gates are **body-relative**: fractions of the per-frame shoulder-to-ankle span (`CompleteSignal.body_span`), so detection is independent of camera distance and resolution — never reintroduce absolute pixel thresholds (an absolute IDLE gate once kept the detector in IDLE on every real clip, because a loaded bar sits at plate height and real wrists reach knee level, not ankle level). A frame with a non-positive span is treated like an incomplete signal. Transition conditions (see the module for the named `*_FRACTION` constants; below, `rise` means a per-frame delta ≥ `RISE_THRESHOLD_FRACTION * body_span`, default fraction 5/300):
 
-Buffer 5–10 frames before confirming a phase transition (prevents oscillation).
+- **IDLE → SETUP**: `wrist_y >= knee_y` (hands down at bar level; arms hanging while standing stay above the knee)
+- **SETUP → FIRST_PULL**: wrist rises between frames
+- **FIRST_PULL → TRANSITION**: wrist above knee height
+- **TRANSITION → SECOND_PULL**: wrist within `SECOND_PULL_WRIST_BELOW_SHOULDER_FRACTION * body_span` of shoulder height
+- **SECOND_PULL → CATCH**: wrist above shoulders
+- **CATCH → RECOVERY**: hip rises between frames
+- **RECOVERY → JERK_DIP** (clean & jerk only, once): hips descending while the bar stays racked (`|wrist_y - shoulder_y| <= RACK_WRIST_PROXIMITY_FRACTION * body_span`)
+- **JERK_DIP → JERK_CATCH**: bar clearly overhead (`wrist_y < shoulder_y - OVERHEAD_WRIST_CLEARANCE_FRACTION * body_span`)
+- **JERK_CATCH → RECOVERY**: hip rises (closes the lift)
+
+Notes:
+- An incomplete `PoseSignal` (any missing joint group) keeps the current phase — no guessing
+- Transitions are chained within one `update()` so a single fast frame can advance multiple phases
+- Known limitation (documented in the class docstring): the wrist midpoint is the only bar proxy, so jerk *drive* frames classify as `JERK_DIP`, and split vs power jerk both land in `JERK_CATCH`
 
 ---
 
 ## Video Processing Pipeline
 
+The pipeline is orchestrated by `AnalyzeVideo.execute` (src/use_cases/analyze_video.py):
+
 ```
-Input video (phone upload)
-  → frame extraction (cv2.VideoCapture)
-  → person detection + tracking (WeightlifterDetector)
-  → pose estimation (YOLOv8)
-  → keypoint smoothing
-  → phase classification
-  → angle computation per frame
-  → fault detection (thresholds from biomechanics skill)
-  → overlay rendering (skeleton + angles + quality colors)
-  → output video (cv2.VideoWriter)
-  → feedback generation (worst faults per phase)
+Input video
+  → validation (FileVideoValidator)
+  → frame extraction (OpenCVVideoReader)
+  → person detection + tracking (YoloPoseDetector — YOLO, HOG fallback, motion fallback)
+  → pose estimation (YoloPoseEstimator → domain Pose)
+  → confidence gating (gate_keypoints, if --min-joint-confidence set)
+  → keypoint smoothing (KeypointSmoother)
+  → phase + angles + faults (AnalyzeLift → PhaseDetector + ClassifyFrame)
+  → overlay rendering (OverlayRenderer — skeleton, angle panel, phase banner)
+  → output video (OpenCVVideoWriter)
+  → feedback summary + optional JSON/text session reports
 ```
 
-Each stage is a pure function or stateful class. No stage reads from disk inside the frame loop (all config loaded upfront).
+Each stage is a pure function or stateful class behind a port. No stage reads from disk inside the frame loop (all config loaded upfront).
 
 ---
 

@@ -1,5 +1,14 @@
 # Phase 0 Visual Check — Lifter Detection + Angle Overlay
 
+> **Status (2026-07-14): superseded, kept for reference.** The manual visual
+> review below was never completed; its verification role has been taken over
+> by the synthetic-clip regression harness
+> ([.github/skills/regression-harness.md](../../.github/skills/regression-harness.md)),
+> which pins rule + phase behavior end-to-end on every test run, and by the
+> golden-frame overlay test that pins the rendered overlay pixels. The
+> checklists below stay unfilled deliberately — fill them only if a real-gym
+> clip (V3) review ever happens.
+
 **Date**: 2026-05-16 (run metadata captured); visual review TBD  
 **Reviewer**: _to be filled in after watching the comparison clips_  
 **Goal**: Verify with your own eyes that lifter detection and angle overlays are usable on real gym video.

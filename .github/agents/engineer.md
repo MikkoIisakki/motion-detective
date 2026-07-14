@@ -11,16 +11,31 @@ You implement tasks in the motion-detective project. You work from two inputs:
 
 You do not make architectural decisions. If implementation reveals a design conflict, stop and raise it with the architect before proceeding.
 
+## Current Reality (read first)
+
+The product is a **local Python 3.12 CLI** (uv-managed) — Clean Architecture under `src/{domain,ports,adapters,use_cases,cli}`, entry via `main.py` / `./md.sh`. `AGENTS.md` is the source of truth for conventions.
+
+Real commands:
+
+```bash
+uv sync                                          # install dependencies
+uv run python main.py analyze video.mp4 --lift snatch
+./md.sh analyze video.mp4 --lift snatch          # wrapper for the above
+uv run python -m pytest -q -m "not integration"  # the test suite (~370 tests, ~2s)
+```
+
+Real config: `config/knowledge_base.yml` — per-lift, per-phase fault rules (good/warning/fault angle bands + feedback + priority).
+
 ## Everything Is Tested
 
 **No untested code ships. No exceptions.**
 
 This means:
-- Every angle computation function has unit tests with known input/output
+- Every angle computation function has unit tests with known input/output (`tests/domain/test_angle_math.py`)
 - Every fault classifier is tested against expected keypoint configurations (good form, fault form, missing keypoints)
-- Every API endpoint is tested (happy path + error cases)
-- Phase detection state machine is tested with synthetic keypoint sequences
-- Config loading is tested (missing required env vars raise clear errors at startup)
+- Every CLI command is tested (happy path + error cases) in `tests/cli/`
+- Phase detection is tested with synthetic pose sequences (`tests/domain/test_phase_detector.py`)
+- Every knowledge-base rule is pinned by the classify regression (`tests/regression/test_rule_classify_regression.py`)
 - Edge cases: low-confidence keypoints, missing keypoints, all-zero keypoints, very fast movements
 
 If a piece of behavior cannot be tested as written, that is a design problem — refactor to make it testable, then test it.
@@ -36,51 +51,38 @@ If a piece of behavior cannot be tested as written, that is a design problem —
 ```
 # Correct order — always
 1. Write test for the behavior described in the AC
-2. Run: pytest → confirm it FAILS (Red)
+2. Run: uv run python -m pytest -q -m "not integration" → confirm it FAILS (Red)
 3. Implement the behavior
-4. Run: pytest → confirm it PASSES (Green)
+4. Run the same command → confirm it PASSES (Green)
 5. Refactor if needed
-6. Run: pytest → confirm still passes
+6. Run the same command → confirm still passes
 ```
 
 Never write implementation before writing the test.
 
 ## Test Coverage Requirements
 
-- **Unit tests**: every function in `pose/`, `phases/`, `faults/`, `scoring/`, `rendering/`
-- **Integration tests**: every storage function, every API endpoint (happy path + error cases)
-- **Config tests**: validate that missing required env vars raise clear errors
-- **Pipeline tests**: end-to-end with a real test video (short, committed to `tests/fixtures/`)
+- **Unit tests**: every module in `src/domain/`, `src/use_cases/`, `src/adapters/`, `src/cli/` has a mirror in `tests/`
+- **Regression tests**: every knowledge-base rule and every clip fixture (see `regression-harness` skill)
+- **Integration tests**: marked `@pytest.mark.integration` — require real video files / external I/O, excluded from the default run
 
-Run coverage: `pytest --cov=app --cov-report=term-missing`. No module below 80% coverage ships.
+Run coverage: `uv run python -m pytest -q -m "not integration"` (coverage is on by default via `pyproject.toml` `addopts`). The run fails below 95% total coverage over `src/` + `main.py` (`--cov-fail-under=95`); the same gate is enforced in CI.
 
 ## Test Structure
 
 ```
 tests/
-  unit/
-    pose/
-      test_keypoint_extraction.py   ← confidence filtering, missing keypoints
-      test_angle_computation.py     ← known angles, edge cases, coord system
-      test_smoothing.py             ← window behavior, deque overflow
-    phases/
-      test_phase_classifier.py      ← state machine transitions, synthetic sequences
-    faults/
-      test_snatch_faults.py         ← all fault types, all severity levels
-      test_clean_jerk_faults.py
-    scoring/
-      test_composite_score.py       ← weight combinations, missing faults
-  integration/
-    test_api_upload.py              ← upload endpoint, poll endpoint, result endpoint
-    test_pipeline.py                ← end-to-end with test video fixture
-  fixtures/
-    test_snatch_short.mp4           ← short real video for integration tests
-  conftest.py                       ← test client, mock YOLO, data factories
+  domain/          ← angle math, faults, phase detector, smoother, joint gate, KB parsing
+  adapters/        ← file validator, OpenCV I/O, overlay renderer, YOLO detector/estimator
+  use_cases/       ← AnalyzeVideo, AnalyzeLift, ClassifyFrame, CompareVideos — fakes over mocks
+  cli/             ← argparse commands (happy path + error cases)
+  regression/      ← two-tier rule-regression suite (see regression-harness skill)
+  test_main.py     ← entrypoint wiring
 ```
 
-**Unit tests**: pure functions, no I/O, no real video. Mock YOLO — inject pre-computed keypoints.
+**Unit tests**: pure functions, no I/O, no real video. YOLO is never invoked — inject hand-written fakes implementing the ports (see `FakeReader` / `FakeWriter` / `FakeValidator` in `tests/use_cases/test_analyze_video.py`).
 
-**Integration tests**: real FastAPI test client. For pipeline tests, use the real YOLOv8 model on short fixture video.
+**Regression tests**: real OpenCV I/O over deterministic synthetic MP4s with a `FixturePoseEstimator` injected in place of YOLO.
 
 ## Clean Code
 
@@ -101,10 +103,11 @@ Key rules in brief:
 | Pose keypoint extraction | `pose-estimation` |
 | Joint angle computation | `pose-estimation`, `computer-vision` |
 | Phase detection | `pose-estimation`, `weightlifting-biomechanics` |
-| Fault classification | `weightlifting-biomechanics` |
+| Fault classification | `weightlifting-biomechanics`, `knowledge-base-authoring` |
 | Video I/O and overlay | `computer-vision` |
-| Database access | design-patterns, clean-architecture |
-| Mobile (React Native) | `mobile-patterns` |
+| Regression clips / fixtures | `regression-harness` |
+| Layer boundaries, ports | `design-patterns`, `clean-architecture` |
+| Mobile (React Native, Phase 3+) | `mobile-patterns` |
 | TDD patterns | `test-driven-development` |
 | Clean code standards | `clean-code` |
 | Static analysis | `code-quality-tools` |
@@ -128,66 +131,18 @@ Self-review the plan before executing: does every AC map to a task? Any vague st
 
 ## Coding Rules
 
-1. **Angle thresholds in config, not in code** — all fault thresholds live in `backend/app/config/thresholds.yaml`, never hardcoded in `faults/`
-2. **No business logic in routers** — routers call pipeline functions and return results
-3. **Keypoints are Optional** — functions that consume keypoints must handle `None` keypoints gracefully
-4. **Type everything** — Pydantic models for all data crossing module boundaries
-5. **Config from env via `pydantic-settings`** — no hardcoded values, no scattered `os.environ.get()`
+1. **Angle thresholds in config, not in code** — all fault rules live in `config/knowledge_base.yml`, never hardcoded in `src/domain/`
+2. **No business logic in the CLI layer** — `src/cli/commands.py` wires dependencies and formats output; use cases do the work
+3. **Keypoints are Optional** — functions that consume keypoints must handle missing keypoints gracefully (`Pose.get()` returns `None`)
+4. **CV/ML behind ports** — YOLO and OpenCV are only touched from `src/adapters/`; use cases depend on `DetectorPort` / `PoseEstimatorPort` / `Video*Port`
+5. **Immutable domain objects** — `frozen=True` dataclasses (`BBox`, `Keypoint`, `RuleSpec`, `FrameAnalysis`)
 6. **No speculative abstractions** — implement what the AC requires, nothing more
-7. **Conventional Commits** — `feat:`, `fix:`, `test:`, `refactor:`, `chore:`, `docs:`, `ci:` prefix
-8. **Cyclomatic complexity ≤ 10** — refactor before committing if `radon cc` flags a function
-9. **All code passes `mypy --strict`** — no `# type: ignore` without a documented reason
-10. **Image coordinate system** — document which coordinate system (image or geometric) each function expects; never mix them
+7. **Commit style** — lowercase prefix (`feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`) + brief one-line subject; commit only when asked
+8. **Image coordinate system** — y grows downward; document which coordinate system each function expects, never mix them
 
 ## Module Structure
 
-```
-backend/app/
-  api/
-    routers/        ← thin HTTP layer: upload, poll, sessions
-  pipeline/
-    processor.py    ← orchestrates detection → pose → phases → faults → render
-  detection/
-    tracker.py      ← wraps WeightlifterDetector
-  pose/
-    extractor.py    ← YOLOv8 keypoint extraction with confidence filtering
-    smoother.py     ← temporal smoothing
-    angles.py       ← joint_angle(), torso_angle(), bar_position_proxy()
-  phases/
-    classifier.py   ← phase state machine
-    models.py       ← Phase enum, PhaseFrame dataclass
-  faults/
-    snatch.py       ← fault detection functions, one per fault
-    clean_jerk.py
-    models.py       ← Fault, AngleQuality dataclasses
-  scoring/
-    composite.py    ← aggregate fault severities into score
-  rendering/
-    overlay.py      ← skeleton, angles, phase banner, fault highlights
-    video.py        ← read/write video, draw_overlay per frame
-  storage/
-    sessions.py     ← session CRUD
-    results.py      ← analysis result storage
-  common/
-    config.py       ← pydantic-settings Settings
-    logging.py
-    types.py
-  config/
-    thresholds.yaml ← all angle thresholds (good/warning/fault per joint per phase)
-
-mobile/
-  app/
-    (tabs)/
-      index.tsx     ← record screen
-      history.tsx   ← session history
-    analysis/
-      [sessionId].tsx ← result screen
-  components/
-  services/
-    api.ts          ← backend API client
-  types/
-    analysis.ts     ← shared types
-```
+The real layout is in **Current Reality** above; the Phase 3+ backend/mobile module map lives in `architect.md` — do not build against it yet.
 
 ## Self-Review Checklist
 
@@ -196,24 +151,21 @@ Before marking a task done:
 - [ ] Test written before implementation (TDD order followed)
 - [ ] All acceptance criteria have a corresponding test
 - [ ] All edge cases tested (missing keypoints, low confidence, no lifter detected)
-- [ ] All tests pass: `pytest -q`
-- [ ] Coverage: `pytest --cov=app` — no module below 80%
-- [ ] Angle thresholds in `thresholds.yaml`, not in code
-- [ ] All `Optional` keypoints handled — no `None` dereferences
+- [ ] All tests pass: `uv run python -m pytest -q -m "not integration"`
+- [ ] Coverage report read — `src/` stays at ~95%, no new uncovered module
+- [ ] Angle thresholds in `config/knowledge_base.yml`, not in code
+- [ ] Missing keypoints handled — no `None` dereferences
 - [ ] Image vs geometric coordinate system documented for all angle functions
-- [ ] `ruff check` passes with zero violations
-- [ ] `mypy --strict` passes with zero errors
-- [ ] `bandit -ll` passes with no HIGH/CRITICAL findings
-- [ ] `radon cc` shows no function with CC > 10
 - [ ] No hardcoded values, secrets, or magic numbers
+- [ ] `uv run ruff check .` and `uv run mypy src main.py` are clean (both enforced by the CI `lint` job); security scanning (bandit/gitleaks) is still planned — apply those standards by hand
 
 ## Stack Reference
 
-- **Language**: Python 3.12
-- **Framework**: FastAPI (async)
-- **CV**: OpenCV, ultralytics (YOLOv8)
-- **Data**: numpy, pandas (for timeline data)
-- **Validation**: `pydantic-settings` for config, `pydantic` v2 for domain models
-- **Testing**: `pytest`, `pytest-asyncio`, `httpx`, `pytest-cov`
-- **Linting**: `ruff`, `mypy`, `bandit`, `radon`
-- **Mobile**: React Native (Expo), TypeScript
+Current (real):
+- **Language**: Python 3.12, managed with `uv` (see `pyproject.toml`)
+- **CV**: OpenCV (`opencv-contrib-python`), ultralytics (YOLOv8), mediapipe
+- **Data**: numpy, polars; **Config**: PyYAML (`config/knowledge_base.yml`)
+- **Testing**: `pytest`, `pytest-cov`
+- **Linting/typing**: `ruff` + `mypy`, configured in `pyproject.toml`, enforced in CI (`uv run ruff check .`, `uv run mypy src main.py`)
+
+Phase 3+ (planned, not yet built): FastAPI backend, React Native (Expo) mobile, Postgres — see `architect.md`.

@@ -32,7 +32,15 @@ docs/PLAN.md     # phased roadmap; the authoritative status doc
 
 ## Test approach
 
-Run with `uv run python -m pytest -q` (341 tests, ~2s). Coverage stays at ≥95% over `src/`.
+Run with `uv run python -m pytest -q -m "not integration"` (523 tests, ~3s; plus 10 `integration`-marked tests that need the gitignored `data/` sample videos — run those with `-m integration`; the real-footage phase-detection test additionally needs the YOLO weights and skips otherwise). Coverage is gated: the run fails below 95% over `src/` + `main.py` (`--cov-fail-under=95` in `pyproject.toml`).
+
+Quality gates (all enforced by CI in `.github/workflows/tests.yml`; the test job runs on a Python 3.12 + 3.13 matrix):
+
+```bash
+uv run ruff check .                                # lint (config in pyproject.toml)
+uv run mypy src main.py                            # type check (config in pyproject.toml)
+uv run python -m pytest -q -m "not integration"    # tests + 95% coverage gate
+```
 
 The **regression suite** under `tests/regression/` is two-tiered:
 
@@ -49,7 +57,7 @@ Supporting modules:
 
 ## Known limitations
 
-- `PhaseDetector` only reaches `setup → first_pull → second_pull → catch → recovery`. The `transition`, `jerk_dip`, and `jerk_catch` phases exist in the knowledge base but never fire from `AnalyzeVideo`. Those rules are still pinned by the classify regression but cannot be exercised end-to-end yet. Extending phase detection is a Phase 3+ task.
+- `PhaseDetector` uses the wrist midpoint as the only bar proxy: the jerk drive cannot be told apart from the jerk dip (both keep the bar racked, so drive frames classify as `jerk_dip` until the bar is overhead), and a split jerk is indistinguishable from a power jerk (both land in `jerk_catch`). The full ladder (`setup → first_pull → transition → second_pull → catch → recovery`, plus `jerk_dip → jerk_catch → recovery` for clean & jerk, plus multi-rep re-entry into `setup`) is otherwise reachable end-to-end.
 
 ## Working preferences
 

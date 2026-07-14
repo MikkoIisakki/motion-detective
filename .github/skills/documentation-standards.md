@@ -1,6 +1,6 @@
 ---
 name: documentation-standards
-description: Documentation responsibilities per agent role, ADR format, README standards, docstring conventions, API doc generation, and changelog process. Used by all agents.
+description: Documentation responsibilities per agent role, ADR format, docstring conventions, and living-documentation rules for motion-detective. Used by all agents.
 ---
 
 # Documentation Standards
@@ -12,38 +12,39 @@ Documentation lives in the repo, versioned alongside the code it describes. A do
 **Rules**:
 - Every doc change ships in the same PR as the code change it documents
 - Docs are reviewed like code — vague or stale docs are rejected in the DoD check
-- No external wiki, no Confluence, no Google Docs — everything in `docs/` or inline
+- No external wiki, no Confluence, no Google Docs — everything in `docs/`, `AGENTS.md`, or inline
+- **`AGENTS.md` is the source of truth** for AI-assistant conventions; `docs/PLAN.md` is the authoritative status/roadmap doc. If behavior changes, update them first
 
 ---
 
 ## Documentation by Agent Role
 
-### Analyst → `docs/analysis/`
-- Factor specification documents (one per factor)
-- Algorithm design documents
-- Backtest result summaries
-- Market regime notes
+### Coach → `docs/analysis/`
+- Fault specification documents (one per fault)
+- Phase definition documents
+- Threshold rationale notes (why a band is what it is)
+- Detection-limitation notes (what a 2D side view can and cannot measure)
 
 ### Architect → `decisions/`
-- Architecture Decision Records (ADRs) — one file per decision
-- System context, container, and component diagrams (Mermaid in `docs/architecture/`)
-- Data model documents (`docs/architecture/data-model.md`)
-- NFR matrix (`docs/architecture/nfr-matrix.md`)
+- Architecture Decision Records (ADRs) — one file per decision (directory created with the first ADR)
+- Diagrams as Mermaid in `docs/architecture/` when design work starts producing them
+- NFR matrix when Phase 3+ design begins
 
 ### Engineer → inline + `docs/`
 - Python docstrings on all public functions and classes
-- Module-level `README.md` for complex modules
-- `CHANGELOG.md` entries (auto-generated from Conventional Commits)
+- Module docstrings that explain the *why* of non-obvious designs (see `tests/regression/synthetic_pose.py` for the house standard)
+- Keep `AGENTS.md` layout/test sections accurate when structure changes
 
-### DevOps → `docs/runbooks/`
-- Operational runbooks (one per failure scenario)
-- Deployment guide (`docs/runbooks/deployment.md`)
-- Local setup guide (`docs/runbooks/local-setup.md`)
+### DevOps → `.github/workflows/` + `docs/runbooks/`
+- Workflow files are self-documenting — clear step names
+- Runbooks appear when there is something to operate (Phase 3+)
 
 ### Product Manager → `docs/requirements/`
 - Requirement traceability matrix (`docs/requirements/traceability.md`)
 - Change log (`docs/requirements/changes.md`)
 - Phase retrospective notes
+
+Risk register: `docs/risks/risk-register.md` (currently RISK-001 … RISK-007) — see `risk-management` skill.
 
 ---
 
@@ -52,7 +53,7 @@ Documentation lives in the repo, versioned alongside the code it describes. A do
 ADRs live in `decisions/`. Every significant architecture or technology choice gets one. They are append-only — never edit a past ADR, write a new one that supersedes it.
 
 ### File naming
-`decisions/NNN-short-title.md` — e.g. `decisions/001-modular-monolith.md`
+`decisions/NNN-short-title.md` — e.g. `decisions/001-ports-and-adapters-for-cv.md`
 
 ### ADR template
 
@@ -95,9 +96,9 @@ Chose Option X because [specific reason tied to context and constraints].
 ```
 
 ### When to write an ADR
-- Technology choice (language, framework, database, queue)
-- Architectural pattern (monolith vs services, CQRS, event sourcing)
-- Data model decision with long-term implications
+- Technology choice (pose model, video backend, future web framework)
+- Architectural pattern (e.g. extending `PhaseDetector` vs replacing it, per-lift phase state machines)
+- Knowledge-base schema changes with long-term implications
 - Any decision that, if changed later, would require significant rework
 
 Do NOT write an ADR for: implementation details, library internals, variable naming.
@@ -106,156 +107,85 @@ Do NOT write an ADR for: implementation details, library internals, variable nam
 
 ## Python Docstrings
 
-All public functions, classes, and modules must have docstrings. Use Google style.
+All public functions, classes, and modules must have docstrings. One-liners are fine when the contract is simple; document units, coordinate systems, and `None` semantics — those are where this codebase bites.
 
 ```python
-def compute_rsi_signal(prices: pd.Series, length: int = 14) -> Signal:
-    """Compute RSI signal from a price series.
+# Real example — src/domain/angle_math.py
+def joint_angle(a: Keypoint, b: Keypoint, c: Keypoint) -> float:
+    """Return the angle ABC in degrees, where B is the vertex joint.
 
-    Args:
-        prices: Closing prices in chronological order (oldest first).
-        length: RSI lookback period in days. Defaults to 14.
-
-    Returns:
-        Signal with name='RSI', value=float, signal_type in
-        ('bullish', 'neutral', 'bearish', 'unavailable').
-        Returns signal_type='unavailable' with weight=0.0 if fewer
-        than `length` prices are provided.
-
-    Raises:
-        ValueError: If prices is empty.
+    Returns 0.0 when either vector has zero length (coincident points).
     """
 ```
 
-**Module docstring** (top of every file):
 ```python
-"""Technical signal computation for the recommendator factor engine.
+# Real example — src/domain/keypoint_smoother.py class docstring
+class KeypointSmoother:
+    """Exponential moving average over keypoint positions.
 
-Computes RSI, MACD, Bollinger Band, EMA cross, and OBV signals from
-daily price data. All functions return Signal objects — see common/types.py.
+    For each keypoint name, smoothed = alpha * new + (1 - alpha) * previous.
+    alpha=1.0 disables smoothing; alpha=0.0 freezes at the first value.
+    Missing keypoints in a new pose are filled from the last known state
+    (handles brief occlusions / detection dropouts).
+    """
+```
 
-Factor thresholds and weights are defined by the analyst agent (analyst.md).
-Do not change thresholds without analyst approval.
+**Module docstring** (for non-obvious modules — real example, `src/domain/joint_gate.py`):
+```python
+"""Confidence gating for pose keypoints.
+
+Drops keypoints whose detector-reported confidence falls below a threshold.
+Dropped keypoints become absent from the returned `Pose`, which lets the
+existing `KeypointSmoother` bridge over them from prior frames.
 """
 ```
 
 **When docstrings are NOT required**:
 - Private functions (`_helper()`) — only if the logic is non-obvious
-- Test functions — test name is the documentation
-- Simple properties / dataclass fields — use field descriptions in Pydantic models instead
+- Test functions — the test name is the documentation
+- Simple frozen-dataclass fields — the names carry the meaning
 
 ---
 
-## Module README
+## Documenting Conventions That Cross Files
 
-Complex modules (more than 3 files or non-obvious design) get a `README.md`:
+Two conventions in this codebase must be restated wherever they apply, because getting them silently wrong produces plausible-looking garbage:
 
-```markdown
-# Module: signals/
-
-Computes technical and fundamental signals from ingested market data.
-
-## Responsibilities
-- Reads from: `daily_price`, `factor_snapshot`, `fundamentals` (via storage/)
-- Writes to: `factor_snapshot` (via storage/)
-- Does NOT: access DB directly, call external APIs
-
-## Files
-- `technical.py` — RSI, MACD, Bollinger, EMA cross, OBV, ATR
-- `fundamental.py` — EPS acceleration, margin expansion, valuation, quality
-- `sentiment.py` — news sentiment rolling average
-
-## Adding a New Signal
-1. Get analyst approval (factor specification + weight proposal)
-2. Add computation function to the appropriate file
-3. Add unit tests in `tests/unit/signals/`
-4. Add column to `factor_snapshot` table via migration
-5. Update `scoring/rule_based.py` with the new weight
-6. Update `docs/analysis/<factor-name>.md`
-```
+1. **Image coordinates** — y grows downward; "wrist rising" means `wrist_y` decreasing. State the coordinate system in any function that does geometry (see `PhaseDetector` and `synthetic_pose.py` docstrings).
+2. **Angle definitions** — `knee_angle = angle(hip, knee, ankle)`, `hip_angle = angle(shoulder, hip, knee)`, `elbow_angle = angle(shoulder, elbow, wrist)`, averaged over left/right sides (`ANGLE_DEFINITIONS` in `src/domain/angle_math.py`). Any doc or fixture that talks about angles uses these definitions.
 
 ---
 
 ## API Documentation
 
-FastAPI generates OpenAPI automatically from code. Ensure it stays accurate:
+> **FUTURE — Phase 3+ (not yet built).** There is no HTTP API today. When the FastAPI backend exists, OpenAPI is generated from code: every router gets `summary=`/`description=`, every response model gets examples, and the generated spec is committed with every API change.
 
-- Every router function has `summary=` and `description=` parameters
-- Every Pydantic response model has `model_config` with `json_schema_extra` for examples
-- Run `make docs` to regenerate `docs/api/openapi.json` — commit it with every API change
+For the current CLI, the "API docs" are `main.py`'s argparse help — keep `help=` strings and the epilog examples accurate:
 
-```python
-@router.get(
-    "/assets/{symbol}",
-    summary="Get asset detail",
-    description="Returns the latest metadata and score for a single asset.",
-    response_model=AssetDetailResponse,
-    responses={404: {"model": ErrorResponse, "description": "Asset not found"}},
-)
-async def get_asset(symbol: str, conn=Depends(get_conn)) -> AssetDetailResponse:
-    ...
+```bash
+uv run python main.py --help
+uv run python main.py analyze --help
 ```
 
 ---
 
 ## Changelog
 
-`CHANGELOG.md` lives at the repo root. Updated on every release (version tag).
-
-Generated from Conventional Commits using `git-cliff` or `conventional-changelog`:
-
-```bash
-# Generate changelog for a new release
-git cliff --tag v0.2.0 --output CHANGELOG.md
-```
-
-Format (Keep a Changelog standard):
-```markdown
-# Changelog
-
-## [0.2.0] - 2026-05-01
-
-### Added
-- RSI signal with oversold/overbought thresholds (#12)
-- Finnish market (.HE) ingestion support (#8)
-
-### Fixed
-- Helsinki market hours off by one hour during DST (#15)
-
-### Changed
-- Scoring weights rebalanced based on analyst review (#14)
-```
+There is no `CHANGELOG.md` yet — history is carried by the commit log, which follows the repo style: lowercase prefix (`feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`) + brief one-line subject. Write subjects so a changelog could be generated from them later.
 
 ---
 
-## Docs Folder Structure
+## Docs Folder Structure (current)
 
 ```
+AGENTS.md                 ← source of truth for AI-assistant conventions (CLAUDE.md points here)
 docs/
-  analysis/               ← analyst: factor specs, algorithm docs
-    rsi-factor.md
-    eps-acceleration-factor.md
-  architecture/           ← architect: diagrams, data model, NFR matrix
-    system-context.md
-    data-model.md
-    nfr-matrix.md
+  PLAN.md                 ← phased roadmap; the authoritative status doc
+  analysis/               ← coach: fault specs, phase analyses (e.g. phase-0-visual-check.md)
   requirements/           ← product-manager: RTM, change log
-    traceability.md
-    changes.md
-  runbooks/               ← devops: operational procedures
-    local-setup.md
-    deployment.md
-    failed-migration.md
-    stale-data.md
-  api/                    ← auto-generated
-    openapi.json
-
-decisions/                ← architect: ADRs (repo root level)
-  001-modular-monolith.md
-  002-postgresql-over-timescaledb.md
-  003-trunk-based-development.md
-
-CHANGELOG.md              ← repo root
+  risks/
+    risk-register.md      ← RISK-001 … RISK-007
+decisions/                ← architect: ADRs (created with the first ADR)
 ```
 
 ---
@@ -265,5 +195,5 @@ CHANGELOG.md              ← repo root
 1. **PR that changes behaviour must update the relevant doc in the same commit** — no "I'll update the docs later"
 2. **Stale docs are bugs** — if you find a doc that contradicts the code, fix the doc (or the code) immediately
 3. **ADRs are append-only** — mark old ones as `Superseded`, write a new one
-4. **Grafana dashboards are docs** — they visualise system behaviour; keep them accurate and provisioned as code
-5. **Test names are docs** — `test_rsi_below_30_returns_bullish` tells you the rule; write test names as specifications
+4. **Fixture YAMLs are docs** — a clip fixture under `tests/regression/fixtures/` documents exactly what a fault looks like; keep the header comments accurate
+5. **Test names are docs** — `test_first_pull_hip_angle_below_fault_band_is_flagged` tells you the rule; write test names as specifications

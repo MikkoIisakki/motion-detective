@@ -44,10 +44,10 @@ Complete each phase before proceeding to the next.
 
 4. **For multi-component failures** — add diagnostic instrumentation at each boundary before proposing fixes:
    ```python
-   # Example: ingestion pipeline failure
-   logger.debug("yfinance response: %s", df.shape)          # what entered normalization?
-   logger.debug("normalized rows: %d", len(price_rows))     # what exited normalization?
-   logger.debug("storage upsert result: %s", result)        # what hit the DB?
+   # Example: analysis pipeline failure
+   logger.debug("detector bbox: %s", bbox)                      # did detection find the lifter?
+   logger.debug("pose keypoints: %d", len(pose.keypoints))      # what survived gating?
+   logger.debug("phase=%s measurements=%s", analysis.phase, analysis.measurements)
    ```
    Run once to see where it breaks, then investigate that component.
 

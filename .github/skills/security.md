@@ -1,9 +1,11 @@
 ---
 name: security
-description: Trust boundaries, secret management, API key handling, and auth patterns for the recommendator system across its deployment phases. For architect and devops use.
+description: Trust boundaries, secret management, API key handling, and auth patterns for the motion-detective system across its deployment phases. For architect and devops use.
 ---
 
 # Security
+
+> **FUTURE — Phase 3+ (not yet built).** The current product is a local CLI; see AGENTS.md for present reality. Today there are no secrets, no network surface, and no user data leaving the machine — these patterns apply when the backend exists.
 
 ## Trust Boundaries
 
@@ -28,7 +30,7 @@ description: Trust boundaries, secret management, API key handling, and auth pat
 - PostgreSQL is never exposed outside `back-tier` — no port binding to host
 - Worker and Scheduler have no public interface
 - Grafana is accessible via Caddy only — not directly on :3000 in production
-- API is the only component that talks to external APIs (data sources)
+- Uploaded videos are stored on the back tier; the API serves them only to their owner
 
 ## Secret Management
 
@@ -43,9 +45,6 @@ description: Trust boundaries, secret management, API key handling, and auth pat
 # .env.example
 DB_PASSWORD=change_me
 GRAFANA_PASSWORD=change_me
-ALPHA_VANTAGE_KEY=your_key_here
-FRED_KEY=your_key_here
-FINNHUB_KEY=your_key_here
 
 # Phase B — DigitalOcean
 DROPLET_SSH_KEY=           # stored in GitHub Secrets for CD workflow
@@ -55,19 +54,18 @@ DROPLET_HOST=              # stored in GitHub Secrets
 ### Phase C (DOKS — future)
 Migrate to Kubernetes Secrets + External Secrets Operator (syncs from a secrets manager). Never use `kubectl create secret` with inline values in CI logs.
 
-## API Key Handling
+## Config and Credential Handling
 
-- External API keys read from environment via `pydantic-settings` config class — never `os.environ.get()` scattered through code
-- Keys never logged, even at DEBUG level
-- Rate limit counters stored in DB (`ingest_run` table) or Redis — API keys never passed between services
+- Config read from environment via a `pydantic-settings` class — never `os.environ.get()` scattered through code
+- Credentials never logged, even at DEBUG level
+- Credentials never passed between services — each service reads its own env
 
 ```python
 # Correct pattern — central config
 class Settings(BaseSettings):
-    alpha_vantage_key: str
-    fred_key: str
-    finnhub_key: str
     db_url: str
+    video_storage_path: str
+    yolo_model_path: str
 
     model_config = SettingsConfigDict(env_file=".env")
 ```
@@ -76,7 +74,7 @@ class Settings(BaseSettings):
 
 No user auth needed for personal-use local deployment. Grafana protected by admin password.
 
-For Phase 4 (multi-user SaaS), design auth before implementing:
+For multi-user SaaS, design auth before implementing:
 - Use an established solution: Auth0, Supabase Auth, or FastAPI + JWT + refresh tokens
 - Never roll a custom auth implementation
 - Design: users table, session management, row-level security in PostgreSQL per user
@@ -85,10 +83,10 @@ For Phase 4 (multi-user SaaS), design auth before implementing:
 
 | Data | Sensitivity | Handling |
 |---|---|---|
-| API keys | High | `.env` only, never logged |
-| Stock price data | Low (public) | Standard DB access |
-| User watchlists (Phase 4) | Medium | Owned by user, row-level access control |
-| Raw API snapshots | Low | Internal only, not exposed via API |
+| **User lift videos** | High — personal data (RISK-005) | Owner-only access, explicit retention policy, deletable via API |
+| Analysis results / findings | Medium | Owned by user, row-level access control |
+| Knowledge-base rules | Low | Public product content |
+| Credentials | High | `.env` only, never logged |
 | Grafana dashboards | Low | Admin password protected |
 
 ## GitHub Actions Security

@@ -5,6 +5,8 @@ description: C4 diagramming conventions, CQRS pattern, module boundary rules, an
 
 # Architecture Patterns
 
+> **FUTURE — Phase 3+ (not yet built).** The current product is a local CLI; see AGENTS.md for present reality. C4 diagramming applies to any design work; the CQRS and service-split material targets the planned Phase 3+ backend.
+
 ## C4 Model — Diagram Levels
 
 Use C4 for all architecture diagrams. Use Mermaid for version-controllable text diagrams.
@@ -14,18 +16,13 @@ Shows the system, its users, and external systems it interacts with. No internal
 
 ```mermaid
 graph TD
-    User([Investor])
-    System[Recommendator System]
-    YF[Yahoo Finance API]
-    AV[Alpha Vantage API]
-    FRED[FRED API]
-    FH[Finnhub API]
+    User([Weightlifter])
+    System[Motion Detective]
+    Model[YOLOv8 pose model\nultralytics]
 
-    User -->|views recommendations & alerts| System
-    System -->|fetches OHLCV + fundamentals| YF
-    System -->|fetches fundamentals + technicals| AV
-    System -->|fetches macro indicators| FRED
-    System -->|fetches news + sentiment| FH
+    User -->|records lift, uploads video| System
+    System -->|annotated video + coach feedback| User
+    System -->|pose keypoints per frame| Model
 ```
 
 ### Level 2 — Container Diagram
@@ -33,21 +30,16 @@ Shows deployable units (containers), their responsibilities, and communication.
 
 ```mermaid
 graph TD
+    Mobile[Mobile app\nReact Native]
     subgraph Docker Compose
         API[FastAPI\nREST API\n:8000]
-        Worker[Worker\nFactor computation]
-        Scheduler[Scheduler\nJob dispatch]
-        DB[(PostgreSQL\nstocks DB)]
-        Grafana[Grafana\nDashboards\n:3000]
-        Caddy[Caddy\nReverse Proxy\n:80/:443]
+        Worker[Worker\nVideo analysis jobs]
+        DB[(PostgreSQL\nsessions + results)]
     end
 
-    Scheduler -->|publishes jobs| Worker
-    Worker -->|reads/writes| DB
-    API -->|reads pre-computed| DB
-    Grafana -->|SQL reads| DB
-    Caddy -->|proxies| API
-    Caddy -->|proxies| Grafana
+    Mobile -->|upload video / poll result| API
+    API -->|job status + results| DB
+    Worker -->|runs analysis pipeline| DB
 ```
 
 ### Level 3 — Component Diagram
@@ -55,36 +47,28 @@ Shows internal structure of a container. Use for complex modules.
 
 ```mermaid
 graph TD
-    subgraph Backend App
-        Router[API Routers]
-        Ingest[Ingestion\nper source]
-        Norm[Normalization]
-        Signals[Signals\ntechnical/fundamental]
-        Scoring[Scoring\nrule-based]
-        Ranking[Ranking]
-        Alerts[Alerts]
-        Storage[Storage\nall SQL]
-        Common[Common\nconfig/logging/types]
+    subgraph Analysis Pipeline
+        Detect[Detection\nYoloPoseDetector]
+        Pose[Pose estimation\nYoloPoseEstimator]
+        Smooth[Smoothing + gating\nKeypointSmoother, joint_gate]
+        Phases[Phase detection\nPhaseDetector]
+        Faults[Fault classification\nClassifyFrame + KnowledgeBase]
+        Render[Overlay rendering\nOverlayRenderer]
     end
 
-    Router --> Storage
-    Ingest --> Norm --> Storage
-    Signals --> Storage
-    Scoring --> Storage
-    Ranking --> Storage
-    Alerts --> Storage
-    Router --> Common
-    Ingest --> Common
+    Detect --> Pose --> Smooth --> Phases --> Faults --> Render
 ```
+
+This level already exists in the current CLI — the component structure above is `src/adapters/` + `src/domain/` + `src/use_cases/` today.
 
 ---
 
 ## CQRS — Command Query Responsibility Segregation
 
-The recommendator uses a simplified CQRS pattern:
+The Phase 3+ backend plans a simplified CQRS pattern:
 
-- **Write path** (Command): ingestion jobs write raw data → normalization → factor computation → score materialization
-- **Read path** (Query): API and Grafana read only from pre-computed tables
+- **Write path** (Command): upload triggers the analysis pipeline → results materialized to storage
+- **Read path** (Query): API poll/result endpoints read only from pre-computed results
 
 **Rule**: Nothing on the read path triggers computation. All reads are against materialized state.
 

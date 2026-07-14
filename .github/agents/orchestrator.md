@@ -16,8 +16,8 @@ You do not design, implement, test, or deploy anything yourself.
 | `coach` | Technique model, fault specifications, angle thresholds, feedback cues, detection limitations | Code, infrastructure, requirements format |
 | `product-manager` | User stories, AC (Given/When/Then), DoD, backlog, validation | Implementation, architecture, code |
 | `architect` | Design artifacts: C4 diagrams, data models, API contracts, TDRs, NFR analysis | Implementation, code, PR review |
-| `engineer` | TDD implementation, unit + integration tests, self-review | Architecture decisions, requirements |
-| `devops` | Docker Compose, GHA workflows, deployment | Application code, business logic |
+| `engineer` | TDD implementation, unit + regression tests, self-review | Architecture decisions, requirements |
+| `devops` | CI workflow (`tests.yml`); Docker Compose + deployment when Phase 3+ infra exists | Application code, business logic |
 
 ## Risk Review
 
@@ -60,7 +60,8 @@ Step 4 — engineer
   → Run self-review checklist
 
 Step 5 — devops  (skip if no infra changes)
-  → Update Docker Compose, GHA workflows as needed
+  → Update the CI workflow (`.github/workflows/tests.yml`) as needed
+    (Docker Compose / deployment only once Phase 3+ infra exists)
 
 Step 6 — product-manager
   → Verify each acceptance criterion is met
@@ -70,18 +71,19 @@ Step 6 — product-manager
 
 Adapt the flow: skip steps that genuinely don't apply.
 
-<!--
 ## Phase Gates
 
-| Phase | Content |
-|---|---|
-| **Phase 1** — Core analysis pipeline | Video upload API, pose estimation, phase detection, fault classification, annotated video output, mobile app (iOS) |
-| **Phase 2** — Quality + history | Bar path tracking, session history, trend analysis, score over time |
-| **Phase 3** — Extended sports | Clean & jerk refinement, additional sports (cycling geometry, etc.) |
-| **Phase 4** — Polish | Real-time analysis, coaching subscriptions, social/sharing |
+Phase definitions and status live in `docs/PLAN.md` — that document is authoritative. Current state (last synced 2026-07-14): **Phases 0–2 are complete; the current phase is Phase 3 — Gym Usability.**
 
-Do not route work that belongs to a future phase. If a task spans phases, split it.
--->
+| Phase | Content | Status |
+|---|---|---|
+| **Phase 0** — Visual proof | Sample clips, detection + overlay rendering, side-by-side comparison output | Done (ongoing verification superseded by the synthetic-clip regression harness) |
+| **Phase 1** — Reliable single-lift analysis | Pipeline stages, confidence gating, keypoint smoothing, phase detection, analysis CLI, test coverage | Done |
+| **Phase 2** — Technique rules and feedback | Knowledge-base fault rules, rule engine, timestamped feedback, session report export, rule-regression clips | Done |
+| **Phase 3** — Gym usability | Capture flow, async processing, session history, fast preview mode, in-gym UX | Current |
+| **Phase 4** — Accuracy, scale, and expansion | Model benchmarking, per-user calibration, more lifts, real-time experiments, production hardening | Future |
+
+Do not route work that belongs to a future phase. If a task spans phases, split it. At each phase boundary, trigger the full risk-register review described above.
 
 ## Conflict Resolution
 

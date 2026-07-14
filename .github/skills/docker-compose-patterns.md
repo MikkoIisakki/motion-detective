@@ -1,9 +1,11 @@
 ---
 name: docker-compose-patterns
-description: Docker Compose conventions, healthcheck patterns, network setup, and single-image multi-role backend pattern for the recommendator project.
+description: Docker Compose conventions, healthcheck patterns, network setup, and single-image multi-role backend pattern for the planned motion-detective backend.
 ---
 
 # Docker Compose Patterns
+
+> **FUTURE — Phase 3+ (not yet built).** The current product is a local CLI; see AGENTS.md for present reality. There is no Docker in this repo today — these patterns apply when the backend stack is built.
 
 ## Core Pattern: One Image, Multiple Roles
 
@@ -35,13 +37,13 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: stocks
-      POSTGRES_USER: stocks
+      POSTGRES_DB: motiondetective
+      POSTGRES_USER: md
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U stocks -d stocks"]
+      test: ["CMD-SHELL", "pg_isready -U md -d motiondetective"]
       interval: 5s
       timeout: 5s
       retries: 10

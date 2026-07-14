@@ -1,7 +1,7 @@
 # Risk Register
 
-Last reviewed: 2026-04-07
-Current phase: Pre-implementation (Phase 1 starting)
+Last reviewed: 2026-07-14
+Current phase: Phases 1–2 complete; Phase 3 (Gym Usability) next — see `docs/PLAN.md`
 
 Score = Likelihood (1–5) × Impact (1–5). High ≥ 10, Critical ≥ 17.
 
@@ -44,7 +44,7 @@ Score = Likelihood (1–5) × Impact (1–5). High ≥ 10, Critical ≥ 17.
 | Impact | 4 |
 | Score | 16 |
 | Level | High |
-| Status | Open |
+| Status | Open — first two mitigations shipped (confidence gating via `--min-joint-confidence`, EMA smoothing via `--smoothing`); accuracy still unvalidated on real extreme positions |
 | Owner | coach, engineer |
 
 **Description**: YOLOv8 COCO pose model was trained on general human poses, not Olympic weightlifting. Extreme positions (full squat, overhead lockout, very fast second pull) may produce low-confidence or incorrect keypoints.
@@ -99,7 +99,7 @@ Score = Likelihood (1–5) × Impact (1–5). High ≥ 10, Critical ≥ 17.
 | Impact | 4 |
 | Score | 12 |
 | Level | High |
-| Status | Open |
+| Status | Open — threshold *drift* is now pinned by the two-tier rule-regression suite (every KB rule + end-to-end synthetic clips) and the 95% coverage CI gate; threshold *correctness* against real lifts remains unvalidated |
 | Owner | coach, engineer |
 
 **Description**: Fault thresholds are set by the coach based on biomechanics knowledge, but not validated against a labelled dataset of lifts. The system may flag good technique as a fault or miss real faults.
@@ -178,11 +178,11 @@ Score = Likelihood (1–5) × Impact (1–5). High ≥ 10, Critical ≥ 17.
 | Field | Value |
 |---|---|
 | Category | Project |
-| Likelihood | 4 |
+| Likelihood | 3 |
 | Impact | 3 |
-| Score | 12 |
-| Level | High |
-| Status | Open |
+| Score | 9 |
+| Level | Medium |
+| Status | Open — re-scored 2026-07-14: Phases 1–2 shipped without scope creep; note the phase-gate table in `.github/agents/orchestrator.md` had been commented out and was restored 2026-07-14 (see RISK-008) |
 | Owner | orchestrator, product-manager |
 
 **Description**: Temptation to add real-time analysis, cycling geometry, social features, or subscription model before Phase 1 is solid.
@@ -196,6 +196,28 @@ Score = Likelihood (1–5) × Impact (1–5). High ≥ 10, Critical ≥ 17.
 **Contingency**: If scope creep is detected, orchestrator returns the task to product-manager to defer the out-of-scope portion.
 
 **Review trigger**: Any task description that references features not in the Phase 1 plan.
+
+---
+
+## RISK-008: Knowledge base and process docs drift from what the pipeline actually does
+
+| Field | Value |
+|---|---|
+| Category | Process |
+| Likelihood | 4 |
+| Impact | 2 |
+| Score | 8 |
+| Level | Medium |
+| Status | Realized and resolved (2026-07-14) |
+| Owner | orchestrator, engineer |
+
+**Description**: Realized risk, logged retroactively. The knowledge base shipped rules for phases (`transition`, `jerk_dip`, `jerk_catch`) the phase detector could never reach, so those rules silently never fired; meanwhile process docs claimed phase-gate enforcement while the orchestrator's phase-gate table was commented out, and this register went unreviewed across two phase boundaries.
+
+**Consequences**: Rules that appear covered but never execute end-to-end; process controls that exist on paper only.
+
+**Resolution (2026-07-14 hardening pass)**: phase detection extended through `transition` and the jerk phases (plus multi-rep re-entry), knowledge-base validation added at load, the per-rule classify regression pins every KB rule including previously unreachable phases, and the orchestrator phase gates were restored to match `docs/PLAN.md`.
+
+**Review trigger**: Any new KB phase or rule — confirm the phase detector can reach it end-to-end (the clip regression suite is the check).
 
 ---
 

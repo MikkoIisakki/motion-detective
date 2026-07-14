@@ -5,6 +5,8 @@ description: Standard DevOps practices beyond GitOps — dependency management, 
 
 # DevOps Standards
 
+> **FUTURE — Phase 3+ (not yet built).** The current product is a local CLI; see AGENTS.md for present reality. Today's dependency management is `uv` + pinned versions in `pyproject.toml`; the container/parity/runbook material applies when the backend stack exists.
+
 ## Dependency Management
 
 ### Python
@@ -85,7 +87,7 @@ Local dev uses the same `docker-compose.yml` as CI services. No "I run Postgres 
 
 ## Secret Rotation
 
-- API keys (Alpha Vantage, FRED, Finnhub) rotated every 90 days
+- Third-party API keys rotated every 90 days
 - DB passwords rotated on any suspected exposure
 - Rotation procedure:
   1. Generate new secret
@@ -171,9 +173,9 @@ Establish and track these from Phase 1:
 
 | Metric | Target | Measure with |
 |---|---|---|
-| API p95 response | < 200ms | Grafana + postgres query timing |
-| Daily ingest time | < 30 min | `ingest_run.finished_at - started_at` |
-| Score freshness | < 1h after market close | `score_snapshot.as_of_date` vs current time |
+| API p95 response (poll/result) | < 200ms | Grafana + postgres query timing |
+| Analysis job duration | < 60s per 10s video | `analysis_run.finished_at - started_at` |
+| Test suite duration | < 30s in CI | `tests.yml` job timing (today: ~2s locally) |
 | DB query p99 | < 50ms | `pg_stat_statements` extension |
 | Container startup | < 30s | `docker compose up` timing |
 

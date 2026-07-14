@@ -1,11 +1,11 @@
 ---
 name: clean-architecture
-description: Clean Architecture principles applied to the recommendator system. Based on Robert C. Martin's Clean Architecture. Defines dependency rules, layer boundaries, and how domain logic is protected from infrastructure concerns. For architect use.
+description: Clean Architecture principles applied to the motion-detective system. Based on Robert C. Martin's Clean Architecture. Defines dependency rules, layer boundaries, and how domain logic is protected from CV/ML infrastructure concerns. For architect use.
 ---
 
 # Clean Architecture
 
-Based on Robert C. Martin's *Clean Architecture* and Domain-Driven Design principles. The goal is a system where business rules are independent of frameworks, databases, and external APIs — they can be tested without any infrastructure running.
+Based on Robert C. Martin's *Clean Architecture* and Domain-Driven Design principles. The goal is a system where business rules are independent of frameworks, models, and I/O — the fault-classification engine can be tested without YOLO, OpenCV, or a single video file on disk.
 
 ---
 
@@ -16,166 +16,160 @@ Based on Robert C. Martin's *Clean Architecture* and Domain-Driven Design princi
 ```
 ┌─────────────────────────────────────────────┐
 │  Frameworks & Drivers (outermost)           │
-│  FastAPI, asyncpg, yfinance, APScheduler    │
+│  main.py wiring, cv2, ultralytics/YOLO      │
 │                                             │
 │  ┌───────────────────────────────────────┐  │
 │  │  Interface Adapters                   │  │
-│  │  routers/, storage/, ingestion/       │  │
+│  │  src/adapters/, src/cli/              │  │
 │  │                                       │  │
 │  │  ┌─────────────────────────────────┐  │  │
 │  │  │  Application / Use Cases        │  │  │
-│  │  │  signals/, scoring/, alerts/    │  │  │
-│  │  │  ranking/, jobs/                │  │  │
+│  │  │  src/use_cases/                 │  │  │
+│  │  │  AnalyzeVideo, AnalyzeLift,     │  │  │
+│  │  │  ClassifyFrame, CompareVideos   │  │  │
 │  │  │                                 │  │  │
 │  │  │  ┌───────────────────────────┐  │  │  │
 │  │  │  │  Domain / Entities        │  │  │  │
-│  │  │  │  common/types.py          │  │  │  │
-│  │  │  │  Pydantic domain models   │  │  │  │
-│  │  │  │  Domain exceptions        │  │  │  │
+│  │  │  │  src/domain/              │  │  │  │
+│  │  │  │  Pose, BBox, RuleSpec,    │  │  │  │
+│  │  │  │  angle math, PhaseDetector│  │  │  │
 │  │  │  └───────────────────────────┘  │  │  │
 │  │  └─────────────────────────────────┘  │  │
 │  └───────────────────────────────────────┘  │
 └─────────────────────────────────────────────┘
 
-Arrows point inward only. Domain never imports from storage. Scoring never imports from routers.
+Arrows point inward only. Domain never imports adapters. Use cases never import cv2 or ultralytics.
 ```
+
+`src/ports/` sits between use cases and adapters: abstract interfaces owned by the inner layers, implemented by the outer ones.
 
 ---
 
-## Layers in the Recommendator
+## Layers in motion-detective
 
-### Layer 1 — Domain Entities (`common/types.py`)
-Pure Python data classes and domain exceptions. No imports from any other project module. No framework dependencies.
+### Layer 1 — Domain Entities (`src/domain/`)
+
+Pure value objects and math. No CV dependencies, no I/O.
 
 ```python
-# common/types.py — domain objects
+# src/domain/faults.py — domain objects
 @dataclass(frozen=True)
-class Signal:
-    name: str
-    value: float | None
-    signal_type: str   # 'bullish' | 'bearish' | 'neutral' | 'unavailable'
-    weight: float
+class AngleThreshold:
+    good: tuple[float, float]
+    warning: tuple[float, float]
+    fault: tuple[float, float]
 
-@dataclass(frozen=True)
-class FactorSnapshot:
-    symbol: str
-    as_of_date: date
-    rsi_14: float | None
-    macd_signal: str | None
-    eps_growth_acceleration: float | None
-    # ... all factor fields
-
-class DomainError(Exception): ...
-class IngestionError(DomainError): ...
-class NoDataError(DomainError): ...
-class ScoringError(DomainError): ...
+    def classify(self, angle: float) -> FaultSeverity:
+        if self.good[0] <= angle <= self.good[1]:
+            return FaultSeverity.GOOD
+        if self.warning[0] <= angle <= self.warning[1]:
+            return FaultSeverity.WARNING
+        return FaultSeverity.FAULT
 ```
 
-**Allowed imports**: Python stdlib only (`datetime`, `dataclasses`, `enum`)
+Modules: `models.py` (`BBox`, `Keypoint`, `Pose`), `angle_math.py` (`joint_angle`), `faults.py` (`LiftPhase`, `FaultSeverity`, `FaultResult`), `knowledge_base.py` (`KnowledgeBase`, `RuleSpec`), `phase_detector.py`, `keypoint_smoother.py`, `joint_gate.py`.
+
+**Allowed imports**: Python stdlib (`math`, `dataclasses`, `enum`) and PyYAML for KB parsing. Never `cv2`, never `ultralytics`, never `numpy` frame buffers.
 
 ---
 
-### Layer 2 — Use Cases (`signals/`, `scoring/`, `alerts/`, `ranking/`, `jobs/`)
-Business rules. Orchestrates domain entities. Calls storage interfaces via dependency injection — never imports `asyncpg` directly.
+### Layer 2 — Ports (`src/ports/`)
+
+Abstract interfaces (ABCs) that the use cases depend on. Owned by the inside, implemented by the outside.
 
 ```python
-# signals/technical.py — use case
-from app.common.types import Signal, FactorSnapshot
-# ✓ imports domain types
-# ✗ never imports asyncpg, FastAPI, yfinance
-
-def compute_rsi_signal(prices: pd.Series) -> Signal:
-    """Pure function. No I/O. Fully unit-testable."""
-    ...
+# src/ports/pose_estimator.py
+class PoseEstimatorPort(ABC):
+    @abstractmethod
+    def estimate(self, frame: np.ndarray, bbox: BBox) -> Pose | None:
+        """Estimate pose keypoints for the subject within bbox. Returns None if estimation fails."""
 ```
 
-**Allowed imports**: `common/types`, `common/config`, Python stdlib, `pandas`, `pandas-ta`, `numpy`
-
-**Not allowed**: `asyncpg`, `fastapi`, `yfinance`, any `storage/` module
+Ports: `DetectorPort`, `PoseEstimatorPort`, `VideoReaderPort`, `VideoWriterPort`, `VideoValidatorPort`, `FrameRendererPort`.
 
 ---
 
-### Layer 3 — Interface Adapters (`storage/`, `ingestion/`, `normalization/`, `api/routers/`)
-Converts data between domain format and external format (DB rows, HTTP responses, API payloads).
+### Layer 3 — Use Cases (`src/use_cases/`)
+
+Orchestration. Depends on domain types and ports — never on adapter classes.
 
 ```python
-# storage/assets.py — adapter
-import asyncpg
-from app.common.types import Asset
-
-async def get_asset(conn: asyncpg.Connection, symbol: str) -> Asset | None:
-    row = await conn.fetchrow("SELECT * FROM asset WHERE symbol = $1", symbol)
-    if row is None:
-        return None
-    return Asset(**dict(row))   # converts DB row → domain type
+# src/use_cases/analyze_video.py — constructor takes ports, not implementations
+class AnalyzeVideo:
+    def __init__(
+        self,
+        validator: VideoValidatorPort,
+        reader: VideoReaderPort,
+        writer: VideoWriterPort,
+        detector: DetectorPort,
+        pose_estimator: PoseEstimatorPort,
+        renderer: FrameRendererPort,
+        analyzer: AnalyzeLift | None = None,
+        ...
+    ) -> None: ...
 ```
 
-```python
-# api/routers/assets.py — adapter
-from fastapi import APIRouter
-from app.storage import assets as asset_repo   # ✓ imports storage adapter
-# ✗ never imports signals/, scoring/ — no business logic in routers
-
-@router.get("/assets/{symbol}")
-async def get_asset(symbol: str, conn=Depends(get_conn)):
-    asset = await asset_repo.get_asset(conn, symbol)
-    if asset is None:
-        raise HTTPException(404, ...)
-    return AssetResponse.from_domain(asset)
-```
-
-**Allowed imports**: `common/`, `asyncpg`, `fastapi`, framework libraries
+**Allowed imports**: `src/domain/`, `src/ports/`, stdlib. **Not allowed**: `cv2`, `ultralytics`, anything from `src/adapters/`.
 
 ---
 
-### Layer 4 — Frameworks & Drivers (`main.py`, `jobs/scheduler.py`, external libs)
-Wiring. Plugs everything together. Contains no business logic.
+### Layer 4 — Interface Adapters (`src/adapters/`, `src/cli/`)
+
+Implementations of the ports plus the CLI presentation layer.
 
 ```python
-# main.py — framework layer
-from fastapi import FastAPI
-from app.api.routers import assets, recommendations, alerts
+# src/adapters/yolo_pose_estimator.py — adapter
+class YoloPoseEstimator(PoseEstimatorPort):
+    def estimate(self, frame: np.ndarray, bbox: BBox) -> Pose | None:
+        result = self._yolo.predict(frame, classes=[0], conf=self._yolo_conf, verbose=False)
+        ...
+        return self._build_pose(kp_array[best_idx], conf_array)  # YOLO tensors → domain Pose
+```
 
-app = FastAPI()
-app.include_router(assets.router, prefix="/v1")
-app.include_router(recommendations.router, prefix="/v1")
+Adapters: `yolo_detector.py` (`YoloPoseDetector`), `yolo_pose_estimator.py` (`YoloPoseEstimator`), `opencv_video.py` (reader/writer), `file_validator.py`, `overlay_renderer.py`. `src/cli/commands.py` formats use-case results for the terminal — no business logic.
+
+---
+
+### Layer 5 — Frameworks & Drivers (`main.py`)
+
+Wiring only. Builds the object graph and hands it to the CLI:
+
+```python
+# main.py — composition root
+use_case = AnalyzeVideo(
+    validator=FileVideoValidator(),
+    reader=OpenCVVideoReader(),
+    writer=OpenCVVideoWriter(),
+    detector=YoloPoseDetector(yolo_model=args.yolo_model),
+    pose_estimator=YoloPoseEstimator(yolo_model=args.yolo_model),
+    renderer=OverlayRenderer(),
+    analyzer=AnalyzeLift(kb, PhaseDetector(), args.lift),
+)
 ```
 
 ---
 
 ## Dependency Inversion in Practice
 
-Use cases must not depend on storage implementations directly. Use **protocol interfaces** so the use case is testable without a DB:
+Because `AnalyzeVideo` depends on ports, tests inject hand-written fakes — no YOLO, no video files, no mocking library:
 
 ```python
-# common/ports.py — abstract interfaces (ports)
-from typing import Protocol
+# tests/use_cases/test_analyze_video.py — fakes over mocks
+class FakeReader(VideoReaderPort):
+    def __init__(self, frames: list[np.ndarray], meta: VideoMeta | None = None):
+        self._frames = frames
+        self._meta = meta or VideoMeta(fps=30.0, width=320, height=240, total_frames=len(frames))
+        self._index = 0
 
-class AssetRepository(Protocol):
-    async def get_asset(self, symbol: str) -> Asset | None: ...
-    async def list_active(self, market: str | None = None) -> list[Asset]: ...
-
-class PriceRepository(Protocol):
-    async def get_prices(self, symbol: str, days: int) -> list[DailyPrice]: ...
+    def read_frame(self) -> tuple[bool, np.ndarray | None]:
+        if self._index >= len(self._frames):
+            return False, None
+        frame = self._frames[self._index]
+        self._index += 1
+        return True, frame
 ```
 
-```python
-# signals/fundamental.py — use case depends on protocol, not implementation
-async def compute_fundamental_signals(
-    symbol: str,
-    prices: PriceRepository,       # ← protocol, not asyncpg
-    fundamentals: FundamentalRepository,
-) -> dict[str, Signal]: ...
-```
-
-```python
-# In tests — inject a fake, no DB needed
-class FakePriceRepository:
-    def __init__(self, data): self._data = data
-    async def get_prices(self, symbol, days): return self._data
-
-# In production — inject the real asyncpg-backed implementation
-```
+The regression suite goes one step further: real OpenCV reader/writer, but a deterministic `FixturePoseEstimator` (`tests/regression/fixture_pose_estimator.py`) swapped in for YOLO — regressing the rule/phase engine, not the model.
 
 ---
 
@@ -184,81 +178,71 @@ class FakePriceRepository:
 **The top-level structure should scream what the system does, not what framework it uses.**
 
 ```
-# Bad — screams "it's a web app"
-app/
-  controllers/
-  models/
-  views/
+# Bad — screams "it's an OpenCV app"
+src/
+  cv2_helpers/
+  yolo/
+  video/
 
-# Good — screams "it's a stock recommendation system"
-app/
-  signals/          ← computes investment signals
-  scoring/          ← scores and ranks assets
-  alerts/           ← evaluates alert rules
-  ingestion/        ← fetches market data
-  ranking/          ← materialises daily rankings
+# Good — screams "it analyses lifts" (actual layout)
+src/
+  domain/          ← lift phases, fault rules, angle math
+  ports/           ← what the analysis needs from the outside world
+  adapters/        ← how cv2/YOLO satisfy those needs
+  use_cases/       ← AnalyzeVideo, AnalyzeLift, ClassifyFrame, CompareVideos
 ```
 
-Framework names (`fastapi/`, `sqlalchemy/`) belong in the outermost layer, not the top level.
+Framework names (`cv2`, `ultralytics`) appear only inside `src/adapters/` and `main.py`.
 
 ---
 
 ## Boundaries and the Anti-Corruption Layer
 
-Where the system touches external APIs (yfinance, Alpha Vantage, FRED, Finnhub), use a thin **anti-corruption layer** in `normalization/` that translates external data formats into domain types. The rest of the system never sees yfinance DataFrames or Alpha Vantage JSON dicts.
+Where the system touches external ML output (YOLO result tensors), a thin translation layer converts external formats into domain types. The rest of the system never sees ultralytics `Results` objects:
 
 ```python
-# normalization/yfinance.py — anti-corruption layer
-def normalize_ohlcv(raw_df: pd.DataFrame, symbol: str) -> list[DailyPrice]:
-    """Translate yfinance DataFrame → domain DailyPrice objects."""
-    return [
-        DailyPrice(
-            symbol=symbol,
-            date=idx.date(),
-            open=row["Open"],
-            close=row["Close"],
-            ...
-        )
-        for idx, row in raw_df.iterrows()
+# src/adapters/yolo_pose_estimator.py — anti-corruption layer
+_COCO_NAMES: dict[int, str] = {0: "nose", 5: "left_shoulder", 6: "right_shoulder", ...}
+
+@staticmethod
+def _build_pose(keypoints_xy: np.ndarray, keypoints_conf: np.ndarray | None = None) -> Pose:
+    kps = [
+        Keypoint(name, int(keypoints_xy[idx][0]), int(keypoints_xy[idx][1]),
+                 confidence=confidence_for(idx))
+        for idx, name in _COCO_NAMES.items()
+        if idx < len(keypoints_xy) ...
     ]
+    return Pose(kps)
 ```
 
-If yfinance changes its column names tomorrow, only `normalization/yfinance.py` changes.
+If ultralytics changes its result format tomorrow, only the adapter changes — `PhaseDetector`, `ClassifyFrame`, and every rule stay untouched.
 
 ---
 
 ## Architecture Fitness Functions
 
-These tests verify architectural rules are not violated — run them in CI:
+These tests verify architectural rules are not violated (planned as an explicit test module — today the rule is enforced by review):
 
 ```python
-# tests/architecture/test_dependency_rules.py
+# tests/architecture/test_dependency_rules.py — planned
 import ast, pathlib
 
-def test_domain_has_no_external_imports():
-    """common/types.py must not import from asyncpg, fastapi, or yfinance."""
-    source = pathlib.Path("backend/app/common/types.py").read_text()
-    tree = ast.parse(source)
-    forbidden = {"asyncpg", "fastapi", "yfinance", "storage", "api"}
-    imports = {node.names[0].name.split(".")[0]
-               for node in ast.walk(tree)
-               if isinstance(node, (ast.Import, ast.ImportFrom))}
-    violations = imports & forbidden
-    assert not violations, f"Domain layer imports infrastructure: {violations}"
+FORBIDDEN_IN_DOMAIN = {"cv2", "ultralytics", "src.adapters", "src.use_cases"}
 
-def test_signals_do_not_import_storage():
-    """signals/ must not import from storage/."""
-    for path in pathlib.Path("backend/app/signals").glob("*.py"):
-        source = path.read_text()
-        assert "from app.storage" not in source, \
-            f"{path.name} imports storage — violates dependency rule"
+def test_domain_has_no_cv_imports():
+    for path in pathlib.Path("src/domain").glob("*.py"):
+        tree = ast.parse(path.read_text())
+        imports = {
+            node.names[0].name.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+        }
+        assert not (imports & FORBIDDEN_IN_DOMAIN), \
+            f"{path.name} imports infrastructure — violates dependency rule"
 
-def test_routers_do_not_import_signals():
-    """Routers must not import business logic directly."""
-    for path in pathlib.Path("backend/app/api/routers").glob("*.py"):
+def test_use_cases_do_not_import_adapters():
+    for path in pathlib.Path("src/use_cases").glob("*.py"):
         source = path.read_text()
-        assert "from app.signals" not in source, \
-            f"{path.name} imports signals — business logic in router"
-        assert "from app.scoring" not in source, \
-            f"{path.name} imports scoring — business logic in router"
+        assert "from src.adapters" not in source, \
+            f"{path.name} imports adapters — depend on ports instead"
 ```

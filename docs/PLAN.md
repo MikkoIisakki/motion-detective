@@ -5,6 +5,8 @@
 **Current date**: 2026-05-16
 **Current phase**: Phase 0 wrap-up complete (pending human visual review); Phases 1 and 2 complete; ready to start Phase 3 — Gym Usability
 
+**Status note (2026-07-14, hardening pass)**: Before starting Phase 3 the pipeline got a hardening pass: phase detection now covers `transition` and the jerk (`jerk_dip`/`jerk_catch`) plus multi-rep re-entry into a fresh setup; the knowledge base is validated at load; YOLO runs a single shared inference per frame; a failing frame no longer aborts the run (per-frame resilience); the fault-timeline logic was extracted into `FaultAggregator`; and CI now gates on ruff, mypy, 95% coverage over a Python 3.12 + 3.13 matrix, plus a separate integration job — the suite stands at 515 unit/regression tests (+9 integration).
+
 ---
 
 ## Phase 0 — Visual Proof (First Milestone)
@@ -125,4 +127,5 @@ Goal: improve robustness and expand capability once core value is proven.
 
 ## Known Limitations (carried forward)
 
-- `PhaseDetector` cannot reach `transition`, `jerk_dip`, or `jerk_catch` phases — the state machine only covers idle → setup → first_pull → second_pull → catch → recovery. Rules for unreachable phases are still pinned by the per-rule classify regression in `tests/regression/test_rule_classify_regression.py` but they will never fire from `AnalyzeVideo`. Extending phase detection is a Phase 3+ task.
+- ~~`PhaseDetector` cannot reach `transition`, `jerk_dip`, or `jerk_catch` phases~~ Resolved 2026-07-14: the detector now covers idle → setup → first_pull → transition → second_pull → catch → recovery, continues into jerk_dip → jerk_catch → recovery for clean & jerk, and re-enters setup for multi-rep clips.
+- The wrist midpoint is the only bar proxy: the jerk drive cannot be told apart from the dip (both keep the bar racked — drive frames classify as `jerk_dip` until the bar is overhead), and a split jerk cannot be distinguished from a power jerk (both land in `jerk_catch`).

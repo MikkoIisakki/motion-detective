@@ -1,6 +1,6 @@
 ---
 name: test-driven-development
-description: TDD process, test pyramid, pytest conventions, fixture patterns, and how to write Given/When/Then tests for the recommendator codebase. For engineer use.
+description: TDD process, test pyramid, pytest conventions, fakes-over-mocks patterns, and how to write Given/When/Then tests for the motion-detective codebase. For engineer use.
 ---
 
 # Test-Driven Development
@@ -23,49 +23,55 @@ If you write code before a failing test exists, you are not doing TDD. Stop, wri
 
 ```
         /\
-       /  \   E2E (rare — manual or smoke tests only)
+       /  \   Integration (marked `integration` — real videos, excluded from default run)
       /────\
-     / Integ \  Integration tests — real DB, real FastAPI client
+     / Regr. \  Regression suite — real OpenCV I/O over synthetic MP4s, YOLO faked
     /──────────\
-   /   Unit     \  Unit tests — pure functions, no I/O, fast
+   /   Unit     \  Unit tests — pure domain functions + use cases with fakes, fast
   /______________\
 ```
 
-- **Unit tests**: majority of tests. Pure functions. No DB, no network. Run in < 1s total.
-- **Integration tests**: real PostgreSQL via Docker. Cover storage layer and API endpoints. Run in CI.
-- **E2E**: manual verification only (for now). `docker compose up` + manual API calls.
+- **Unit tests**: majority of tests. Pure domain functions and use cases with fake ports. No YOLO, no video files. Whole suite runs in ~2s.
+- **Regression tests**: `tests/regression/` — end-to-end `AnalyzeVideo` runs on deterministic stick-figure clips plus a per-rule classify net (see the `regression-harness` skill).
+- **Integration tests**: `@pytest.mark.integration` — need real video files / external I/O; excluded by `-m "not integration"`.
 
 ## Pytest Conventions
 
-### File structure
+### File structure (mirrors `src/`)
+
 ```
 tests/
-  unit/
-    signals/
-      test_technical.py
-      test_fundamental.py
-      test_sentiment.py
-    scoring/
-      test_rule_based.py
-    normalization/
-      test_normalizers.py
-    common/
-      test_market_hours.py
-  integration/
-    test_storage_assets.py
-    test_storage_prices.py
-    test_storage_factors.py
-    test_api_assets.py
-    test_api_recommendations.py
-  conftest.py
+  domain/
+    test_angle_math.py
+    test_faults.py
+    test_phase_detector.py
+    test_keypoint_smoother.py
+    test_joint_gate.py
+    test_knowledge_base.py
+    test_models.py
+  adapters/
+    test_file_validator.py
+    test_opencv_video.py
+    test_overlay_renderer.py
+    test_yolo_detector.py
+    test_yolo_pose_estimator.py
+  use_cases/
+    test_analyze_lift.py
+    test_analyze_video.py
+    test_classify_frame.py
+    test_compare_videos.py
+  cli/
+    test_commands.py
+  regression/          ← see regression-harness skill
+  test_main.py
 ```
 
 ### Test naming
 `test_<what>_<condition>_<expected>`:
 ```python
-def test_rsi_below_30_returns_bullish_signal(): ...
-def test_score_with_no_signals_returns_hold(): ...
-def test_get_asset_unknown_symbol_returns_404(): ...
+def test_classify_angle_in_good_band_returns_good(): ...
+def test_phase_detector_incomplete_signal_keeps_current_phase(): ...
+def test_analyze_rejects_smoothing_above_one(): ...
 ```
 
 ### Given/When/Then in test structure
@@ -73,147 +79,120 @@ def test_get_asset_unknown_symbol_returns_404(): ...
 Map acceptance criteria directly to test structure using comments:
 
 ```python
-def test_daily_price_history_returns_correct_range():
-    # Given: AAPL has 60 days of price data in the DB
-    # When: GET /v1/assets/AAPL/prices?days=30
-    # Then: returns exactly 30 rows, descending date order
-    #   And: each row has date, open, high, low, close, volume
+def test_first_pull_hip_angle_below_fault_band_is_flagged():
+    # Given: the snatch first_pull hip_angle rule (fault band 0–50°)
+    # When: a frame measures hip_angle = 25°
+    # Then: the fault is reported with feedback and priority
 
-    seed_prices(symbol="AAPL", days=60)
+    kb = KnowledgeBase.from_file("config/knowledge_base.yml")
+    classify = ClassifyFrame(kb)
 
-    response = client.get("/v1/assets/AAPL/prices?days=30")
+    results = classify.execute(
+        "snatch", LiftPhase.FIRST_PULL, [JointMeasurement("hip_angle", 25.0)]
+    )
 
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert len(data) == 30
-    assert data[0]["date"] > data[-1]["date"]   # descending
-    assert all({"date","open","high","low","close","volume"} <= set(row) for row in data)
+    assert results[0].severity == FaultSeverity.FAULT
+    assert results[0].feedback
+    assert results[0].priority == FaultPriority.PERFORMANCE
 ```
 
-## Fixtures
+## Fakes over Mocks
 
-Define all shared fixtures in `tests/conftest.py`:
+Use cases depend on ports (`src/ports/`), so tests inject **hand-written fakes that implement the port** — not `unittest.mock` patch chains. Fakes live next to the tests that use them (see `tests/use_cases/test_analyze_video.py`):
 
 ```python
-import pytest
-import asyncpg
+class FakeValidator(VideoValidatorPort):
+    def __init__(self, should_raise: bool = False):
+        self._should_raise = should_raise
 
-@pytest.fixture(scope="session")
-async def db_pool():
-    pool = await asyncpg.create_pool(TEST_DATABASE_URL)
-    yield pool
-    await pool.close()
+    def validate(self, path: str) -> None:
+        if self._should_raise:
+            raise ValueError(f"Invalid video: {path}")
 
-@pytest.fixture(autouse=True)
-async def clean_db(db_pool):
-    """Truncate all tables before each test to ensure isolation."""
-    async with db_pool.acquire() as conn:
-        await conn.execute("""
-            TRUNCATE asset, daily_price, factor_snapshot, score_snapshot,
-                     raw_source_snapshot, ingest_run, alert_rule, alert_event
-            RESTART IDENTITY CASCADE
-        """)
-    yield
 
-@pytest.fixture
-def client(db_pool):
-    """FastAPI TestClient with real DB pool injected."""
-    from httpx import AsyncClient
-    from app.main import app
-    return AsyncClient(app=app, base_url="http://test")
+class FakeWriter(VideoWriterPort):
+    def __init__(self):
+        self.written_frames: list[np.ndarray] = []
+        self.closed = False
 
-# Data factory fixtures
-@pytest.fixture
-def make_asset(db_pool):
-    async def _make(symbol="AAPL", market="US", **kwargs):
-        async with db_pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO asset (symbol, name, exchange, market, currency) "
-                "VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
-                symbol, kwargs.get("name", symbol), kwargs.get("exchange", "NASDAQ"),
-                market, kwargs.get("currency", "USD")
-            )
-        return symbol
-    return _make
+    def open(self, path: str, meta: VideoMeta) -> None:
+        self.opened_path = path
+
+    def write_frame(self, frame: np.ndarray) -> None:
+        self.written_frames.append(frame)
 ```
+
+Why fakes beat mocks here:
+- They are checked by the type system — if a port grows a method, fakes fail loudly
+- They hold observable state (`written_frames`) instead of brittle `assert_called_with` chains
+- They read like the real thing, so tests document the contract
 
 ## Unit Test Patterns
 
-Pure functions need no fixtures — just call and assert:
+Pure domain functions need no fixtures — just call and assert:
 
 ```python
-# tests/unit/signals/test_technical.py
-import pandas as pd
-from app.signals.technical import compute_rsi_signal
+# tests/domain/test_angle_math.py style
+from src.domain.angle_math import joint_angle
+from src.domain.models import Keypoint
 
-def test_rsi_below_30_is_bullish():
-    # Given: 14 days of prices trending down (RSI will be < 30)
-    prices = pd.Series([100, 98, 96, 94, 92, 90, 88, 86, 84, 82, 80, 78, 76, 74])
-    # When
-    signal = compute_rsi_signal(prices)
-    # Then
-    assert signal.signal_type == "bullish"
-    assert signal.value < 30
+def test_right_angle_is_90_degrees():
+    # Given: three keypoints forming an L
+    a = Keypoint("hip", 0, 0)
+    b = Keypoint("knee", 0, 100)
+    c = Keypoint("ankle", 100, 100)
+    # When / Then
+    assert joint_angle(a, b, c) == pytest.approx(90.0)
 
-def test_rsi_with_insufficient_data_returns_unavailable():
-    prices = pd.Series([100, 98])  # less than 14 days
-    signal = compute_rsi_signal(prices)
-    assert signal.signal_type == "unavailable"
-    assert signal.weight == 0.0
+def test_coincident_points_return_zero():
+    p = Keypoint("hip", 50, 50)
+    assert joint_angle(p, p, p) == 0.0
 ```
 
-## Integration Test Patterns
+## Use-Case Test Pattern
 
 ```python
-# tests/integration/test_api_assets.py
-import pytest
-
-@pytest.mark.asyncio
-async def test_get_asset_returns_detail(client, make_asset):
-    # Given
-    await make_asset("AAPL", market="US", name="Apple Inc.")
+def test_analyze_video_writes_one_frame_per_input_frame():
+    # Given: a 3-frame fake video and fakes for every port
+    frames = [np.zeros((240, 320, 3), dtype=np.uint8)] * 3
+    writer = FakeWriter()
+    use_case = AnalyzeVideo(
+        validator=FakeValidator(),
+        reader=FakeReader(frames),
+        writer=writer,
+        detector=FakeDetector(),
+        pose_estimator=FakePoseEstimator(),
+        renderer=FakeRenderer(),
+    )
     # When
-    response = await client.get("/v1/assets/AAPL")
+    use_case.execute("in.mp4", "out.mp4")
     # Then
-    assert response.status_code == 200
-    data = response.json()["data"]
-    assert data["symbol"] == "AAPL"
-    assert data["market"] == "US"
-
-@pytest.mark.asyncio
-async def test_get_unknown_asset_returns_404(client):
-    # Given: no assets in DB (clean_db fixture)
-    # When
-    response = await client.get("/v1/assets/INVALID")
-    # Then
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "ASSET_NOT_FOUND"
+    assert len(writer.written_frames) == 3
 ```
 
 ## What NOT to Mock
 
-- **PostgreSQL** — always use a real test DB. Mock DB = false confidence.
-- **Pure functions** — don't mock your own code; test it directly.
+- **Domain logic** — never fake `AngleThreshold.classify` or `PhaseDetector`; test them directly
+- **The knowledge base** — load the real `config/knowledge_base.yml` (it is fast and it is the product)
+- **OpenCV in the regression suite** — the clip tests intentionally use the real reader/writer on real MP4s
 
-**Mock only**:
-- External HTTP APIs (yfinance, Alpha Vantage, FRED, Finnhub) in unit tests — use `pytest-mock` or `responses` library
-- Clock/time in market hours tests — use `freezegun`
+**Fake only at the ports**: YOLO (`FixturePoseEstimator` / `FakePoseEstimator`), video I/O in unit tests, the detector (`_FullFrameDetector` in regression tests).
 
 ## Running Tests
 
 ```bash
-# All tests
-pytest -q
+# The standard run (what CI does) — excludes integration tests
+uv run python -m pytest -q -m "not integration"
 
-# Unit tests only (fast)
-pytest tests/unit/ -q
+# Everything including integration tests (needs real videos)
+uv run python -m pytest -q
 
-# Integration tests only
-pytest tests/integration/ -q
+# One directory
+uv run python -m pytest tests/domain/ -q
 
-# Specific file
-pytest tests/unit/signals/test_technical.py -v
+# Specific file, verbose
+uv run python -m pytest tests/use_cases/test_analyze_video.py -v
 
-# With coverage
-pytest --cov=app --cov-report=term-missing
+# Coverage is on by default (pyproject addopts: --cov=src --cov-report=term-missing).
+# Current coverage over src/ is ~95%; there is no enforced gate yet (CI gate planned).
 ```

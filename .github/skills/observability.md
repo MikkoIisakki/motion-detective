@@ -1,80 +1,66 @@
 ---
 name: observability
-description: Logging standards, health check design, pipeline staleness detection, and what "the system is healthy" means for each component. For architect and devops use.
+description: Logging standards, health check design, job staleness detection, and what "the system is healthy" means for each component of the planned motion-detective backend. For architect and devops use.
 ---
 
 # Observability
+
+> **FUTURE — Phase 3+ (not yet built).** The current product is a local CLI; see AGENTS.md for present reality. There are no services, health endpoints, or dashboards today — this applies when the backend exists. (Today's observability is the CLI's console output, the session reports from `--report-json`/`--report-summary`, and the test suite.)
 
 ## What "Healthy" Means Per Component
 
 | Component | Healthy when | Unhealthy signal |
 |---|---|---|
 | **API** | Responds to `/v1/health/ready` in < 500ms | DB unreachable, response > 2s |
-| **Scheduler** | Ingest jobs published within 5 min of scheduled time | No jobs published for > 1h during market hours |
-| **Worker** | Processes jobs with < 30 min lag | Job queue grows, no completions in > 1h |
-| **Ingestion** | `ingest_run` row written with `status=success` within 2h of market close | `status=failed` or no row for today |
-| **Scoring** | `score_snapshot` rows written for all active assets by 19:00 local | Missing rows or `as_of_date` = yesterday |
+| **Worker** | Analysis jobs complete within the latency target (< 60s per 10s video) | Job queue grows, no completions in > 15 min while jobs pending |
+| **Analysis quality** | Keypoint confidence above threshold on key joints for most frames | Confidence collapse — model file missing/corrupt, bad uploads |
 | **Database** | `pg_isready` passes, query latency < 50ms | Connection refused, slow queries |
-| **Data freshness** | `daily_price.date` = today for all active assets by 19:00 | Stale dates — data source may be down |
+| **Storage** | Uploaded and annotated videos readable; disk headroom > 20% | Missing artifacts, disk pressure |
 
 ## Logging Standards
 
 Use structured JSON logging in all services. Never use `print()`.
 
 ```python
-import logging
-import json
-
 # Standard fields in every log record
 {
-  "timestamp": "2026-04-07T10:00:00Z",   # ISO 8601 UTC
-  "level": "INFO",                         # DEBUG / INFO / WARNING / ERROR / CRITICAL
-  "service": "worker",                     # service name
-  "module": "ingestion.yfinance",          # Python module path
-  "event": "price_ingestion_complete",     # snake_case event name
-  "symbol": "AAPL",                        # domain context fields
-  "rows_written": 252,
-  "duration_ms": 430,
-  "source": "yfinance"
+  "timestamp": "2026-04-07T10:00:00Z",     # ISO 8601 UTC
+  "level": "INFO",                          # DEBUG / INFO / WARNING / ERROR / CRITICAL
+  "service": "worker",                      # service name
+  "module": "use_cases.analyze_video",      # Python module path
+  "event": "analysis_complete",             # snake_case event name
+  "session_id": "a1b2c3",                   # domain context fields
+  "lift": "snatch",
+  "frames_processed": 312,
+  "findings": 2,
+  "duration_ms": 41200
 }
 ```
 
 **Log levels**:
-- `DEBUG` — per-row detail, timing internals (off in production)
-- `INFO` — job started/completed, rows written, scores computed
-- `WARNING` — recoverable issues: missing data field, API rate limit approaching, stale data detected
-- `ERROR` — failed ingest for a specific asset, unexpected API response, DB write failed
-- `CRITICAL` — total pipeline failure, DB unreachable, scheduler crashed
+- `DEBUG` — per-frame detail, timing internals (off in production)
+- `INFO` — job started/completed, frames processed, findings produced
+- `WARNING` — recoverable issues: low keypoint confidence run, no lifter detected in a segment, slow processing
+- `ERROR` — failed analysis for a specific session, corrupt upload, DB write failed
+- `CRITICAL` — worker crash loop, model file unavailable, DB unreachable
 
-**Never log**: API keys, passwords, personal data, raw API response payloads (those go in `raw_source_snapshot`)
+**Never log**: credentials, personal data, video content or frame data — a lift video is personal data (RISK-005); log session IDs, not payloads.
 
-## Pipeline Staleness Detection
+## Job Staleness Detection
 
-The Grafana pipeline dashboard queries these to detect staleness:
+Dashboard queries to detect stuck or failed analysis work:
 
 ```sql
--- Assets with no price data today
-SELECT a.symbol, a.market, MAX(dp.date) AS last_price_date
-FROM asset a
-LEFT JOIN daily_price dp ON dp.symbol = a.symbol
-WHERE a.active = TRUE
-GROUP BY a.symbol, a.market
-HAVING MAX(dp.date) < CURRENT_DATE
-ORDER BY last_price_date ASC NULLS FIRST;
+-- Sessions stuck in processing for more than 10 minutes
+SELECT id, created_at, status
+FROM analysis_session
+WHERE status = 'processing'
+  AND created_at < NOW() - INTERVAL '10 minutes'
+ORDER BY created_at;
 
--- Missing score snapshots for today
-SELECT a.symbol
-FROM asset a
-WHERE a.active = TRUE
-  AND NOT EXISTS (
-    SELECT 1 FROM score_snapshot ss
-    WHERE ss.symbol = a.symbol
-      AND ss.as_of_date = CURRENT_DATE
-  );
-
--- Recent ingest run failures
-SELECT source, started_at, status, error_message
-FROM ingest_run
+-- Recent analysis failures
+SELECT id, started_at, status, error_message
+FROM analysis_run
 WHERE started_at > NOW() - INTERVAL '24 hours'
   AND status = 'failed'
 ORDER BY started_at DESC;
@@ -88,7 +74,7 @@ GET /v1/health
 → {"status": "ok"}
 
 GET /v1/health/ready
-→ 200 if DB reachable + last ingest_run < 25h ago
+→ 200 if DB reachable + model file loaded + no stuck jobs
 → 503 if DB unreachable
 → {"status": "ok" | "degraded" | "unavailable", "checks": {...}}
 ```
@@ -99,40 +85,41 @@ Readiness response body:
   "status": "degraded",
   "checks": {
     "database": "ok",
-    "last_ingest_us": "2026-04-06T17:30:00Z",
-    "last_ingest_fi": "2026-04-06T19:15:00Z",
-    "stale_assets": 3
+    "pose_model": "loaded",
+    "stuck_jobs": 1,
+    "oldest_pending_job": "2026-04-07T09:48:00Z"
   }
 }
 ```
 
-## `ingest_run` Table
+## `analysis_run` Table
 
-Every scheduled job writes an `ingest_run` record:
+Every analysis job writes an `analysis_run` record:
 
 ```sql
-CREATE TABLE ingest_run (
+CREATE TABLE analysis_run (
     id              BIGSERIAL PRIMARY KEY,
-    source          TEXT NOT NULL,           -- 'yfinance_us', 'yfinance_fi', 'alphavantage', 'fred', 'finnhub'
-    job_type        TEXT NOT NULL,           -- 'daily_prices', 'fundamentals', 'macro', 'news'
+    session_id      TEXT NOT NULL,
+    lift            TEXT NOT NULL,            -- 'snatch', 'clean_and_jerk'
     started_at      TIMESTAMPTZ NOT NULL,
     finished_at     TIMESTAMPTZ,
-    status          TEXT NOT NULL DEFAULT 'running',  -- 'running', 'success', 'partial', 'failed'
-    assets_attempted INT,
-    assets_succeeded INT,
-    assets_failed    INT,
+    status          TEXT NOT NULL DEFAULT 'running',  -- 'running', 'success', 'failed'
+    frames_processed INT,
+    findings_count   INT,
+    mean_confidence  REAL,                    -- keypoint quality signal
     error_message   TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
-## Grafana Alert Rules (System Health)
+## Alert Rules (System Health)
 
-Configure in Grafana (not application alert_rule table — these are infra alerts):
+Configure in the dashboarding tool — these are infra alerts:
 
 | Alert | Query | Threshold |
 |---|---|---|
-| Stale US prices | Count assets with last price > 1 day ago | > 0 after 19:00 ET |
-| Failed ingest run | Count failed ingest_runs in last 24h | > 0 |
-| Missing scores | Count assets with no score today | > 0 after 20:00 ET |
+| Stuck analysis jobs | Sessions in `processing` > 10 min | > 0 |
+| Failed runs | Failed `analysis_run` rows in last 24h | > 3 |
+| Slow analysis | p95 job duration for 10s videos | > 60s |
 | API slow | `/v1/health/ready` response time | > 1000ms |
+| Confidence collapse | Mean keypoint confidence across recent runs | < 0.5 |

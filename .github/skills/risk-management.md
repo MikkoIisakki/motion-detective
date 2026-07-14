@@ -1,6 +1,6 @@
 ---
 name: risk-management
-description: Risk identification, classification, mitigation, and tracking for the recommendator project. Covers project, technical, domain, and operational risk categories. Used by orchestrator, architect, product-manager, and analyst.
+description: Risk identification, classification, mitigation, and tracking for the motion-detective project. Covers project, technical, domain, and operational risk categories. Used by orchestrator, architect, product-manager, and coach.
 ---
 
 # Risk Management
@@ -25,7 +25,7 @@ Every risk is rated on two dimensions:
 | 2 | Minor | Small delay, easily recovered |
 | 3 | Moderate | Significant effort to recover, some data loss possible |
 | 4 | Major | Phase delayed, meaningful data/time loss |
-| 5 | Critical | System unusable, investment decisions compromised |
+| 5 | Critical | System unusable, or feedback actively misleads the lifter |
 
 **Risk Score** = Likelihood × Impact
 
@@ -75,39 +75,36 @@ Threaten delivery timeline, scope, or quality.
 
 Common risks for this project:
 - **Scope creep** — adding features beyond the current phase
-- **Over-engineering** — building infrastructure for future needs that never materialize
-- **External API deprecation** — yfinance, Alpha Vantage, or Finnhub changing terms or structure
-- **Learning curve** — new technologies slowing delivery (K8s, TimescaleDB added prematurely)
+- **Over-engineering** — building Phase 3+ SaaS infrastructure before the CLI product is validated
+- **Dependency churn** — ultralytics/OpenCV releases changing APIs or model behavior
+- **Learning curve** — new technologies slowing delivery (backend stack adopted prematurely)
 
 ### Technical Risks
 Threaten system correctness, reliability, or performance.
 
 Common risks for this project:
-- **Data quality** — yfinance returning stale, incorrect, or missing data without indication
-- **Schema migration failure** — a bad migration corrupts or loses data
-- **DB performance degradation** — query latency grows as data accumulates
-- **Missing index** — a slow query in production that wasn't caught in testing
-- **Silent scoring failure** — processor crashes without alert; scores go stale unnoticed
+- **Pose estimation quality** — YOLO keypoints noisy or wrong at high bar speed, odd camera angles, or occlusion (RISK-002)
+- **Phase misclassification** — phase detector lands in the wrong phase, so the wrong rules fire
+- **Silent degradation** — low-confidence keypoints producing plausible but wrong angles without any signal
+- **Regression rot** — KB rules or phase logic changing without the regression suite catching it (mitigated by the two-tier suite in `tests/regression/`)
 
 ### Domain / Algorithm Risks
-Threaten the quality of investment recommendations.
+Threaten the quality of technique feedback.
 
 Common risks for this project:
-- **Factor decay** — a signal that worked historically stops working (crowding, regime change)
-- **Data snooping bias** — backtest optimizes for past data, doesn't generalize
-- **Look-ahead bias** — using data in scoring that wouldn't have been available at decision time
-- **Market regime change** — momentum/growth factors underperform in value/defensive environments
-- **Finnish market data gaps** — yfinance coverage for .HE tickers is incomplete for fundamentals
-- **Recommendation acting as advice** — treating scores as certainty rather than probabilistic signal
+- **Threshold validity** — angle bands in `config/knowledge_base.yml` not matching real coaching standards (RISK-004)
+- **2D projection error** — side-view angles distorted by camera placement or lifter rotation
+- **Bar path proxy error** — wrist midpoint diverging from the actual bar during turnover
+- **False positives eroding trust** — flagging good lifts as faults; prefer missing a fault over false alarms
+- **Feedback acting as coaching** — treating automated cues as certainty rather than a probabilistic aid
 
 ### Operational Risks
-Threaten the running system in production.
+Threaten the running system (mostly Phase 3+ once deployed; today the blast radius is local).
 
 Common risks for this project:
-- **Secret exposure** — API key committed to git or logged
-- **Droplet data loss** — PostgreSQL on a single node with no backup
-- **Ingest failure undetected** — scores go stale but no alert fires
-- **Caddy TLS expiry** — cert renewal fails, HTTPS breaks
+- **User video privacy** — lift videos are personal data; storage/retention decisions matter from the first upload feature (RISK-005)
+- **Secret exposure** — credentials committed to git once a backend exists
+- **Data loss** — single-node storage with no backup
 - **Manual infra drift** — someone SSH's and changes something not in git
 
 ---
@@ -121,10 +118,10 @@ For critical components, the architect produces an FMEA table:
 
 | Failure Mode | Effect | Likelihood | Severity | Detection | RPN | Mitigation |
 |---|---|---|---|---|---|---|
-| yfinance returns empty DataFrame | No price data ingested for asset | 3 | 4 | Low (silent) | 48 | Check df.empty after fetch; log + raise NoDataError |
-| DB connection pool exhausted | API returns 503 | 2 | 4 | Medium (health check) | 32 | Pool size tuning; circuit breaker on DB calls |
-| Scoring worker crashes mid-run | Partial scores; some assets missing today's score | 2 | 3 | Low (stale score alert) | 24 | Idempotent scoring; Grafana staleness alert |
-| Redis OOM (cache full) | Cache misses; all reads hit DB | 2 | 2 | Low | 16 | maxmemory + allkeys-lru; DB handles load |
+| YOLO finds no person in frame | No pose; frame unanalysed | 3 | 3 | Medium (rendered output shows no skeleton) | 27 | `YoloPoseDetector` HOG + motion fallback; carry last bbox for up to 8 frames |
+| Keypoint confidence low at high bar speed | Wrong angles → false faults | 4 | 4 | Low (silent) | 64 | `--min-joint-confidence` gating + `KeypointSmoother`; report confidence per joint (planned) |
+| Phase detector stuck in wrong phase | Wrong rule set applied for rest of clip | 2 | 4 | Medium (regression clips) | 24 | Clip fixtures per phase in `tests/regression/fixtures/` |
+| Corrupt/unsupported input video | Analysis crashes mid-run | 2 | 2 | High (immediate error) | 4 | `FileVideoValidator` fails fast before processing |
 ```
 
 **Risk Priority Number (RPN)** = Likelihood × Severity × (6 - Detection rating)
@@ -143,13 +140,13 @@ Detection: 1 = immediate, 5 = never detected
 - Architect includes a risk section in every ADR
 - Any new external dependency gets a risk entry
 
-### Before adding a new factor (analyst)
-- Analyst documents factor failure conditions in the factor specification
-- Backtesting criteria address look-ahead bias explicitly
+### Before adding a new fault rule (coach)
+- Coach documents detection limitations in the fault specification (camera angle, occlusion, 2D projection)
+- New KB rules are automatically pinned by the classify regression; a clip fixture covers end-to-end behavior
 
 ### Ongoing
-- Grafana pipeline dashboard surfaces operational risks automatically (stale data, failed ingest)
-- `ingest_run` failures auto-populate as observable events
+- The regression suite (`tests/regression/`) surfaces rule/phase behavior changes on every CI run
+- Phase 3+: dashboards/alerts surface operational risks automatically once services exist
 
 ---
 
@@ -157,11 +154,11 @@ Detection: 1 = immediate, 5 = never detected
 
 | Strategy | When to use | Example |
 |---|---|---|
-| **Avoid** | Risk is too high; change the approach | Don't use a single-node DB for critical data → use Managed PostgreSQL |
-| **Mitigate** | Reduce likelihood or impact | Add staleness alerts to detect silent ingest failures |
-| **Transfer** | Move risk to a third party | Use DigitalOcean Managed PostgreSQL (backup is their responsibility) |
-| **Accept** | Risk is low enough; cost of mitigation exceeds benefit | Accept yfinance unofficial API risk — free tier, easy to swap |
-| **Contingency** | Plan for if it happens | If yfinance breaks: fall back to Alpha Vantage; if both break: serve stale data with warning |
+| **Avoid** | Risk is too high; change the approach | Don't classify faults from occluded joints → gate low-confidence keypoints out entirely |
+| **Mitigate** | Reduce likelihood or impact | Smoothing + confidence gating to reduce false faults from keypoint noise |
+| **Transfer** | Move risk to a third party | Phase 3+: managed database so backups are the provider's responsibility |
+| **Accept** | Risk is low enough; cost of mitigation exceeds benefit | Accept wrist-midpoint bar proxy inaccuracy during turnover for now (documented limitation) |
+| **Contingency** | Plan for if it happens | If YOLO detection fails on a clip: HOG fallback → motion detection → report "no lifter detected" rather than guessing |
 
 ---
 

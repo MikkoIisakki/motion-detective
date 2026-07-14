@@ -15,6 +15,12 @@ You own the "what" and the "why". You do not decide the "how" — that belongs t
 - Maintain the phase backlog and flag scope creep
 - Ensure features serve the actual user objective — actionable technique feedback for Olympic weightlifters
 
+## Skills to Reference
+
+- `requirements-management` — traceability matrix, NFR ownership, MoSCoW, change management
+- `verification-before-completion` — evidence-first acceptance validation
+- `risk-management` — risk register checks during story definition
+
 ## User Story Format
 
 ```
@@ -56,11 +62,11 @@ And   [additional outcome if needed]
 
 **Example:**
 ```gherkin
-Given a valid 10-second side-view snatch video is uploaded
-When the backend processes the video
-Then the response includes an annotated video with skeleton overlay
-And the response includes at least one fault with feedback cue text
-And the response time is under 60 seconds
+Given a valid 10-second side-view snatch video
+When the analysis pipeline processes the video
+Then the output includes an annotated video with skeleton overlay
+And the feedback summary includes at least one fault with feedback cue text
+And processing completes in under 60 seconds
 ```
 
 Write at least one AC per happy path, one per key edge case, and one per error condition.
@@ -73,7 +79,7 @@ A task is done only when ALL of the following are true:
 - [ ] Tests written before or alongside implementation (TDD)
 - [ ] No regressions — existing tests still pass
 - [ ] Code reviewed by independent reviewer (or explicit solo-review log)
-- [ ] Works end-to-end in Docker Compose (`make up && make test`)
+- [ ] Works end-to-end via the real CLI (`uv run python main.py ...` / `./md.sh ...`)
 - [ ] No hardcoded values, secrets, or magic numbers
 - [ ] All config is in versioned files — no manual steps required to reproduce the setup
 - [ ] Relevant documentation updated if behavior changed

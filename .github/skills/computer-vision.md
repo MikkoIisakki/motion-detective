@@ -120,7 +120,7 @@ def draw_skeleton(
 
 ### Angle Labels
 
-Use the occupied-box approach already in `WeightlifterDetector._draw_angle_label` to prevent overlapping labels. Prefer placing labels where there is space — try multiple offsets before giving up.
+The production approach (`OverlayRenderer._draw_angle_panel` in src/adapters/overlay_renderer.py) avoids overlapping labels by not placing them at the joints at all: angles render as a fixed panel of rows anchored bottom-left, one row per measured angle (`Knee L: 94 deg`, ...), each colored by that joint's current severity. If you ever move labels onto the skeleton, solve overlap explicitly (occupied-box tracking, multiple candidate offsets).
 
 ### Phase Banner
 
@@ -141,38 +141,42 @@ def draw_phase_banner(frame: np.ndarray, phase_name: str) -> None:
 
 ### Video with Overlay
 
-Primary output. Annotated video file (`.mp4`) with skeleton, angles, phase banner, and fault highlights. The engineer writes this to a temp path, then the API returns it to the mobile client as a file download or streaming URL.
+Primary output. Annotated video file (`.mp4`) with skeleton, angle panel, and phase banner, written to `--output` (default `output/annotated.mp4`). In the Phase 3+ SaaS this becomes a download/streaming URL from the API.
 
-### JSON Analysis
+### JSON Session Report
 
-Structured analysis result alongside the video:
+Structured analysis result alongside the video — written by `AnalyzeVideo._write_reports` (src/use_cases/analyze_video.py) when `--report-json`/`--report-summary` paths are set. Actual shape:
 
 ```json
 {
-  "lift_type": "snatch",
-  "phases_detected": ["setup", "first_pull", "second_pull", "catch"],
-  "duration_seconds": 4.2,
-  "faults": [
+  "generated_at_utc": "2026-07-12T10:15:00+00:00",
+  "input_video": "/abs/path/lift.mp4",
+  "annotated_video": "/abs/path/annotated.mp4",
+  "video": {
+    "fps": 30.0,
+    "processed_frames": 126,
+    "duration_seconds": 4.2
+  },
+  "summary": [
+    "00:00.800-00:01.600 [FAULT/performance] first_pull: Keep hips from rising before the bar passes the knee (24 frames)"
+  ],
+  "findings": [
     {
       "phase": "first_pull",
-      "joint": "back_angle",
-      "description": "Back angle changed by 12° during first pull",
-      "severity": "fault",
-      "feedback": "Keep your back angle — push the floor away, don't lift your hips",
-      "frame_start": 24,
-      "frame_end": 48
+      "feedback": "Keep hips from rising before the bar passes the knee",
+      "severity": "FAULT",
+      "priority": "performance",
+      "start_seconds": 0.8,
+      "end_seconds": 1.6,
+      "start_timestamp": "00:00.800",
+      "end_timestamp": "00:01.600",
+      "frames": 24
     }
-  ],
-  "angle_timeline": {
-    "knee_left": [94, 98, 110, 135, 168, 178, 85, 82],
-    ...
-  },
-  "score": 72,
-  "confidence": 0.84
+  ]
 }
 ```
 
-The `confidence` field reflects the proportion of frames where keypoint confidence was above threshold (similar to RISK-009 pattern from recommendator for data quality).
+An overall per-clip `confidence` field (proportion of frames with keypoint confidence above threshold) is a planned addition for surfacing low-quality detections — not yet implemented.
 
 ---
 

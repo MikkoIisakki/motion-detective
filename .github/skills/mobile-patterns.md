@@ -5,6 +5,8 @@ description: Mobile app patterns for motion-detective. Covers React Native archi
 
 # Mobile Patterns
 
+> **FUTURE — Phase 3+ (not yet built).** The current product is a local CLI; see AGENTS.md for present reality. There is no mobile app or backend API today.
+
 Mobile app patterns for the motion-detective client. The mobile app captures video, uploads it to the backend API, and displays the annotated result with coach feedback.
 
 ---

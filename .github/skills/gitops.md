@@ -1,9 +1,11 @@
 ---
 name: gitops
-description: GitOps principles, branch strategy, environment promotion, image tagging, rollback, and drift prevention for the recommendator project.
+description: GitOps principles, branch strategy, environment promotion, image tagging, rollback, and drift prevention for the motion-detective project.
 ---
 
 # GitOps
+
+> **FUTURE — Phase 3+ (not yet built).** The current product is a local CLI; see AGENTS.md for present reality. The branch/PR principles apply now; everything about images, environments, Droplets, and CD applies when there is something to deploy.
 
 ## Core Principle
 
@@ -74,9 +76,9 @@ Never deploy `latest` in production. Every deployed image is traceable to a Git 
 
 ```
 # Tag format
-ghcr.io/owner/recommendator-backend:<git-sha>      # primary, immutable
-ghcr.io/owner/recommendator-backend:v0.2.0         # release tag
-ghcr.io/owner/recommendator-backend:main           # branch tip (dev only)
+ghcr.io/owner/motion-detective-backend:<git-sha>      # primary, immutable
+ghcr.io/owner/motion-detective-backend:v0.2.0         # release tag
+ghcr.io/owner/motion-detective-backend:main           # branch tip (dev only)
 ```
 
 **GHA build + push workflow** (`image-build.yml`, Phase 3):
@@ -104,7 +106,7 @@ CD workflow SSHes to the Droplet, updates the compose file, and runs `docker com
 
 ```bash
 # On the Droplet — CD script
-cd /opt/recommendator
+cd /opt/motion-detective
 git fetch origin
 git reset --hard origin/main          # Droplet matches main, always
 docker compose pull                   # pull new image tags
@@ -171,12 +173,12 @@ Every PR must have:
 
 PR title format (Conventional Commits):
 ```
-feat: add RSI signal to factor engine
-fix: missing daily price for Helsinki close time
-chore: bump yfinance to 0.2.38
-docs: update API design for /v1/rankings endpoint
-refactor: extract scoring weights to config file
-test: add edge cases for insufficient RSI data
+feat: add knee angle fault detection for first pull
+fix: phase detection misclassifying setup as first pull
+chore: bump ultralytics to 8.4.22
+docs: update API design for /v1/sessions endpoint
+refactor: extract angle thresholds to config file
+test: add edge cases for low-confidence keypoints
 ci: add gitleaks secret scanning
 ```
 

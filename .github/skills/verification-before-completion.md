@@ -31,25 +31,25 @@ Skipping any step is asserting without evidence.
 
 | Claim | Command | Success criteria |
 |---|---|---|
-| Tests pass | `pytest -q` | `N passed, 0 failed` |
-| Coverage met | `pytest --cov=app --cov-report=term-missing` | No module below 80% |
-| Lint clean | `ruff check backend/` | `All checks passed` |
-| Type-safe | `mypy backend/app` | `Success: no issues found` |
-| Security clean | `bandit -r backend/app -ll` | No HIGH or CRITICAL findings |
-| Complexity within limit | `radon cc backend/app -n C` | No output (no CC > 10) |
-| Migration applies cleanly | `psql ... -f db/migrations/NNN.sql` | No errors |
-| Endpoint works | `curl -s http://localhost:8000/v1/...` | Expected JSON, expected status code |
+| Tests pass | `uv run python -m pytest -q -m "not integration"` | `N passed`, 0 failed (~370 tests) |
+| Coverage held | same command — coverage prints via `--cov-report=term-missing` | `src/` total stays ~95%; new code not in the Missing column (no enforced gate yet — CI gate planned) |
+| Regression suite green | `uv run python -m pytest tests/regression/ -q` | All clip + classify tests pass |
+| CLI works | `./md.sh analyze <video> --lift snatch` (or `lifts` / `phases` / `rules` for KB claims) | Expected output, exit code 0 |
+| KB rule added | `uv run python main.py rules <lift> <phase>` | New rule listed with bands, feedback, priority |
+| Annotated output correct | Open the output MP4 / regenerated clip under `tests/regression/clips/` | Overlay visually matches the claim |
 | AC verified | Read AC, check each Given/When/Then | Each criterion explicitly confirmed |
+
+Lint / type-check / security-scan claims: those tools are **planned — not yet configured** in this repo. There is nothing to run, so never claim "lint clean" or "mypy passes" here.
 
 ## Common Failures
 
 | Claim | What is required | What is NOT sufficient |
 |---|---|---|
-| "Tests pass" | `pytest` output showing 0 failures | "Should pass", previous run, inference |
-| "Lint clean" | `ruff check` output showing 0 errors | "I didn't add any new code" |
+| "Tests pass" | pytest output showing 0 failures | "Should pass", previous run, inference |
+| "Coverage held" | The printed coverage table from this run | "I added tests for everything" |
 | "AC met" | Step through each Given/When/Then | "The tests cover it" |
 | "Bug fixed" | Reproduce original symptom, confirm it no longer occurs | Code changed |
-| "Migration works" | Applied to a clean DB in CI | "SQL looks correct" |
+| "Fixture works" | Regression test run discovering and passing the new fixture | "The YAML looks right" |
 | "Task done" | Self-review checklist fully checked | "Implementation is in place" |
 
 ## Red Flags — Stop
@@ -80,6 +80,6 @@ If any criterion cannot be verified by running a command or observing actual beh
 | "Should work now" | Run the command |
 | "I'm confident" | Confidence is not evidence |
 | "I checked it earlier" | Fresh verification, in this message |
-| "The linter passed" | Linter ≠ type checker ≠ tests ≠ runtime |
+| "The unit tests passed" | Unit tests ≠ regression suite ≠ real CLI run |
 | "Agent reported success" | Verify independently |
 | "Partial check is enough" | Partial proves nothing |

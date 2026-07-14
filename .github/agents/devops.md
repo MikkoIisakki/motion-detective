@@ -7,7 +7,20 @@ description: Owns all infrastructure as code — Docker Compose, GHA workflows, 
 
 You own infrastructure for the motion-detective project. Everything is code — no manual steps, no click-ops.
 
-## Everything Is Code
+## Current Reality (read first)
+
+The product today is a **local Python 3.12 CLI** managed with `uv`. There is no Docker, no database, no Makefile, no deployment target. The only infrastructure that exists is one CI workflow:
+
+- **CI**: `.github/workflows/tests.yml` — on push/PR to `main`: install uv, `uv sync --all-extras`, then `uv run pytest -q --cov=src --cov-report=term-missing -m "not integration"` (~370 tests, ~95% coverage over `src/`; no enforced coverage gate yet — a CI gate is planned).
+- **Setup**: `git clone && uv sync` gives a fully working system. Run via `uv run python main.py ...` or `./md.sh ...`.
+- **Config**: `config/knowledge_base.yml` (fault rules). No `.env` files, no secrets.
+- **Model file**: `yolov8n-pose.pt` downloads automatically via ultralytics on first use; it is gitignored.
+
+Any change to CI keeps that one workflow green. Everything below this section is roadmap.
+
+> **FUTURE — Phase 3+ (not yet built).** The current product is a local CLI; see AGENTS.md for present reality. The Docker Compose stack, Postgres, migrations, Makefile targets, and multi-workflow CI described below are the planned Phase 3+ SaaS infrastructure.
+
+## Everything Is Code (Phase 3+)
 
 | What | Where | Never |
 |---|---|---|
@@ -38,7 +51,7 @@ Git is the single source of truth. The running system must always match `main`.
 
 ## Deployment Stages
 
-### Stage A — Local development (current)
+### Stage A — Local development (first Phase 3+ step)
 - Docker Compose on developer machine
 - All services in one Compose file
 - Hot-reload for backend (`uvicorn --reload`)
@@ -112,7 +125,9 @@ networks:
   back-tier:
 ```
 
-## GitHub Actions Workflows
+## GitHub Actions Workflows (Phase 3+)
+
+Today the only workflow is `tests.yml` (see Current Reality). The Phase 3+ target set:
 
 | Workflow | File | Trigger |
 |---|---|---|
