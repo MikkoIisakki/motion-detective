@@ -18,6 +18,10 @@ dev = [
     "pytest==8.3.4",
     "pytest-cov==7.1.0",
     "matplotlib==3.10.8",
+    "ruff==0.15.21",
+    "mypy==2.3.0",
+    "types-PyYAML==6.0.12.20260518",
+    "hypothesis==6.151.4",
 ]
 
 [dependency-groups]
@@ -25,6 +29,10 @@ dev = [
     "pytest==8.3.4",
     "pytest-cov==7.1.0",
     "matplotlib==3.10.8",
+    "ruff==0.15.21",
+    "mypy==2.3.0",
+    "types-PyYAML==6.0.12.20260518",
+    "hypothesis==6.151.4",
 ]
 
 [build-system]
@@ -40,7 +48,34 @@ log_cli_level = "DEBUG"
 log_format = "%(asctime)s - %(name)s - %(levelname)s - %(funcName)s - %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"
 testpaths = ["tests"]
-addopts = "--cov=src --cov-report=term-missing"
+addopts = "--cov=src --cov=main --cov-report=term-missing --cov-fail-under=95"
 markers = [
     "integration: marks tests that require real video files and external I/O",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    # UP042 wants `class X(str, Enum)` -> `enum.StrEnum`, but that changes str()/format()
+    # semantics (StrEnum renders as its value, str-mixin as `Class.NAME`) — a behavioral
+    # change to domain enums (LiftPhase, FaultPriority), not a lint-level fix.
+    "UP042",
+]
+
+[tool.mypy]
+python_version = "3.12"
+disallow_untyped_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# No type stubs published for these third-party packages.
+module = ["cv2.*", "ultralytics.*", "mediapipe.*"]
+ignore_missing_imports = true
+follow_imports = "skip"

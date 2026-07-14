@@ -37,3 +37,4 @@ output/
 # JetBrains / VSCode
 .idea/
 .vscode/
+.hypothesis/
