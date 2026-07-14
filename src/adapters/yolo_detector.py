@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import importlib.util
-from typing import Optional
-
 import cv2
 import numpy as np
 
+from src.adapters.yolo_inference import CachedYoloInference, ultralytics_available
 from src.domain.models import BBox
 from src.ports.detector import DetectorPort
 
@@ -19,36 +17,30 @@ class YoloPoseDetector(DetectorPort):
         yolo_conf: float = 0.35,
         min_motion_area: int = 3000,
         max_missing_frames: int = 8,
+        inference: CachedYoloInference | None = None,
     ) -> None:
-        self._yolo_model_path = yolo_model
-        self._yolo_conf = yolo_conf
         self._min_motion_area = min_motion_area
         self._max_missing_frames = max_missing_frames
 
-        self._yolo = self._load_yolo() if self._ultralytics_available() else None
+        if inference is None and self._ultralytics_available():
+            inference = CachedYoloInference(yolo_model, yolo_conf)
+        self._inference = inference
         self._hog = cv2.HOGDescriptor()
-        self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+        self._hog.setSVMDetector(cv2.HOGDescriptor.getDefaultPeopleDetector())
         self._bg_subtractor = cv2.createBackgroundSubtractorMOG2(
             history=400, varThreshold=32, detectShadows=False
         )
-        self._last_bbox: Optional[BBox] = None
+        self._last_bbox: BBox | None = None
         self._missing_frames = 0
 
     @staticmethod
     def _ultralytics_available() -> bool:
-        return importlib.util.find_spec("ultralytics") is not None
-
-    def _load_yolo(self):
-        from ultralytics import YOLO  # type: ignore
-        return YOLO(self._yolo_model_path)
+        return ultralytics_available()
 
     def detect(self, frame: np.ndarray) -> BBox | None:
         previous_center = self._last_bbox.center if self._last_bbox else None
 
-        if self._yolo is not None:
-            candidates = self._detect_yolo(frame)
-        else:
-            candidates = self._detect_hog(frame)
+        candidates = self._detect_yolo(self._inference, frame) if self._inference else self._detect_hog(frame)
 
         best = self._choose_best(candidates, previous_center)
 
@@ -67,8 +59,9 @@ class YoloPoseDetector(DetectorPort):
         self._last_bbox = None
         return None
 
-    def _detect_yolo(self, frame: np.ndarray) -> list[BBox]:
-        result = self._yolo.predict(frame, classes=[0], conf=self._yolo_conf, verbose=False)
+    @staticmethod
+    def _detect_yolo(inference: CachedYoloInference, frame: np.ndarray) -> list[BBox]:
+        result = inference.predict(frame)
         if not result or result[0].boxes is None:
             return []
         boxes = []

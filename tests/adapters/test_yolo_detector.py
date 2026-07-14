@@ -1,15 +1,51 @@
+from unittest.mock import patch
+
 import numpy as np
-import pytest
-from unittest.mock import MagicMock, patch
 
 from src.adapters.yolo_detector import YoloPoseDetector
 from src.domain.models import BBox
+from tests.adapters.yolo_fakes import FakeYoloModel, cached_inference, person_result
 
 
 def make_detector(**kwargs):
     """Create detector with YOLO loading patched out."""
     with patch.object(YoloPoseDetector, "_ultralytics_available", staticmethod(lambda: False)):
         return YoloPoseDetector(**kwargs)
+
+
+class TestConstructorWiring:
+    def test_builds_own_inference_when_ultralytics_available(self):
+        with patch("src.adapters.yolo_detector.CachedYoloInference") as ctor:
+            detector = YoloPoseDetector(yolo_model="m.pt", yolo_conf=0.5)
+        ctor.assert_called_once_with("m.pt", 0.5)
+        assert detector._inference is ctor.return_value
+
+
+class TestDetectWithInjectedInference:
+    def test_returns_bbox_from_shared_inference(self):
+        model = FakeYoloModel(person_result([[10, 20, 110, 220]]))
+        detector = YoloPoseDetector(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        assert detector.detect(frame) == BBox(10, 20, 100, 200)
+        assert model.predict_calls == 1
+
+    def test_empty_result_yields_no_candidates(self):
+        model = FakeYoloModel([])
+        detector = YoloPoseDetector(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        detector._detect_motion = lambda _: None
+
+        assert detector.detect(frame) is None
+
+    def test_empty_boxes_falls_back_to_motion(self):
+        model = FakeYoloModel(person_result(np.empty((0, 4))))
+        detector = YoloPoseDetector(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+        fallback = BBox(30, 40, 80, 140)
+        detector._detect_motion = lambda _: fallback
+
+        assert detector.detect(frame) == fallback
 
 
 class TestChooseBest:

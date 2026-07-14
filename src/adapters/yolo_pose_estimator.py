@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
-
 import numpy as np
 
+from src.adapters.yolo_inference import CachedYoloInference
 from src.domain.models import BBox, Keypoint, Pose
 from src.ports.pose_estimator import PoseEstimatorPort
 
@@ -26,15 +25,16 @@ _COCO_NAMES: dict[int, str] = {
 
 
 class YoloPoseEstimator(PoseEstimatorPort):
-    def __init__(self, yolo_model: str = "yolov8n-pose.pt", yolo_conf: float = 0.35) -> None:
-        if not importlib.util.find_spec("ultralytics"):
-            raise RuntimeError("YoloPoseEstimator requires `ultralytics`. Install with: pip install ultralytics")
-        from ultralytics import YOLO  # type: ignore
-        self._yolo = YOLO(yolo_model)
-        self._yolo_conf = yolo_conf
+    def __init__(
+        self,
+        yolo_model: str = "yolov8n-pose.pt",
+        yolo_conf: float = 0.35,
+        inference: CachedYoloInference | None = None,
+    ) -> None:
+        self._inference = inference if inference is not None else CachedYoloInference(yolo_model, yolo_conf)
 
     def estimate(self, frame: np.ndarray, bbox: BBox) -> Pose | None:
-        result = self._yolo.predict(frame, classes=[0], conf=self._yolo_conf, verbose=False)
+        result = self._inference.predict(frame)
         if not result:
             return None
         r = result[0]

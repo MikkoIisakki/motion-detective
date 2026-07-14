@@ -1,8 +1,85 @@
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
 from src.adapters.yolo_pose_estimator import YoloPoseEstimator
 from src.domain.models import BBox
+from tests.adapters.yolo_fakes import FakeYoloModel, cached_inference, person_result
+
+
+class TestConstructorWiring:
+    def test_builds_own_inference_when_none_injected(self):
+        with patch("src.adapters.yolo_pose_estimator.CachedYoloInference") as ctor:
+            estimator = YoloPoseEstimator(yolo_model="m.pt", yolo_conf=0.5)
+        ctor.assert_called_once_with("m.pt", 0.5)
+        assert estimator._inference is ctor.return_value
+
+
+class TestEstimateWithInjectedInference:
+    def test_builds_pose_for_detection_closest_to_bbox(self):
+        keypoints_xy = np.stack([
+            np.tile([[500.0, 500.0]], (17, 1)),  # far person
+            np.tile([[60.0, 120.0]], (17, 1)),   # person matching the bbox
+        ])
+        model = FakeYoloModel(person_result(
+            [[400, 400, 600, 600], [10, 20, 110, 220]],
+            keypoints_xy=keypoints_xy,
+        ))
+        estimator = YoloPoseEstimator(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        pose = estimator.estimate(frame, BBox(10, 20, 100, 200))
+
+        assert pose is not None
+        assert pose.get("nose").as_tuple() == (60, 120)
+        assert model.predict_calls == 1
+
+    def test_threads_keypoint_confidence_from_result(self):
+        keypoints_xy = np.tile([[60.0, 120.0]], (17, 1)).reshape(1, 17, 2)
+        keypoints_conf = np.full((1, 17), 0.4, dtype=np.float32)
+        model = FakeYoloModel(person_result(
+            [[10, 20, 110, 220]], keypoints_xy=keypoints_xy, keypoints_conf=keypoints_conf,
+        ))
+        estimator = YoloPoseEstimator(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        pose = estimator.estimate(frame, BBox(10, 20, 100, 200))
+
+        assert pose.get("nose").confidence == pytest.approx(0.4, abs=1e-6)
+
+    def test_returns_none_when_result_has_no_keypoints(self):
+        model = FakeYoloModel(person_result([[10, 20, 110, 220]]))
+        estimator = YoloPoseEstimator(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        assert estimator.estimate(frame, BBox(10, 20, 100, 200)) is None
+
+    def test_returns_none_when_result_has_no_detections(self):
+        keypoints_xy = np.tile([[60.0, 120.0]], (17, 1)).reshape(1, 17, 2)
+        model = FakeYoloModel(person_result(np.empty((0, 4)), keypoints_xy=keypoints_xy))
+        estimator = YoloPoseEstimator(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        assert estimator.estimate(frame, BBox(10, 20, 100, 200)) is None
+
+    def test_returns_none_when_keypoints_missing_for_closest_detection(self):
+        keypoints_xy = np.tile([[500.0, 500.0]], (17, 1)).reshape(1, 17, 2)
+        model = FakeYoloModel(person_result(
+            [[400, 400, 600, 600], [10, 20, 110, 220]],  # closest is index 1
+            keypoints_xy=keypoints_xy,  # but only one keypoint set
+        ))
+        estimator = YoloPoseEstimator(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        assert estimator.estimate(frame, BBox(10, 20, 100, 200)) is None
+
+    def test_returns_none_for_empty_result(self):
+        model = FakeYoloModel([])
+        estimator = YoloPoseEstimator(inference=cached_inference(model))
+        frame = np.zeros((240, 320, 3), dtype=np.uint8)
+
+        assert estimator.estimate(frame, BBox(10, 20, 100, 200)) is None
 
 
 class TestClosestDetectionIndex:
