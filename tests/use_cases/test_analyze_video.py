@@ -1,8 +1,11 @@
 import json
+
 import numpy as np
 import pytest
 
+from src.domain.analysis import FrameAnalysis
 from src.domain.faults import FaultPriority, FaultResult, FaultSeverity, LiftPhase
+from src.domain.frame_failure_policy import ExcessiveFrameFailuresError
 from src.domain.models import BBox, Keypoint, Pose
 from src.ports.detector import DetectorPort
 from src.ports.frame_renderer import FrameRendererPort
@@ -10,9 +13,7 @@ from src.ports.pose_estimator import PoseEstimatorPort
 from src.ports.video_reader import VideoMeta, VideoReaderPort
 from src.ports.video_validator import VideoValidatorPort
 from src.ports.video_writer import VideoWriterPort
-from src.use_cases.analyze_lift import FrameAnalysis
 from src.use_cases.analyze_video import AnalyzeVideo
-
 
 # --- Fakes ---
 
@@ -139,9 +140,14 @@ class TestAnalyzeVideo:
         frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(2)]
 
         class StubPoseEstimator(PoseEstimatorPort):
-            def __init__(self): self._poses = [pose1, pose2]; self._i = 0
+            def __init__(self):
+                self._poses = [pose1, pose2]
+                self._i = 0
+
             def estimate(self, frame, bbox):
-                p = self._poses[self._i]; self._i += 1; return p
+                p = self._poses[self._i]
+                self._i += 1
+                return p
 
         renderer = FakeRenderer()
         uc = make_use_case(
@@ -197,19 +203,19 @@ class TestAnalyzeVideo:
         uc.execute("input.mp4", "output.mp4")
         assert writer.closed is True
 
-    def test_writer_is_closed_even_when_renderer_raises(self):
+    def test_writer_is_closed_even_when_every_frame_fails(self):
         class BrokenRenderer(FrameRendererPort):
             def render(self, frame, bbox, pose, analysis=None):
                 raise RuntimeError("renderer exploded")
 
         writer = FakeWriter()
-        frames = [np.zeros((240, 320, 3), dtype=np.uint8)]
+        frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(20)]
         uc = make_use_case(
             reader=FakeReader(frames),
             writer=writer,
             renderer=BrokenRenderer(),
         )
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ExcessiveFrameFailuresError):
             uc.execute("input.mp4", "output.mp4")
         assert writer.closed is True
 
@@ -343,9 +349,14 @@ class TestAnalyzeVideo:
         frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(2)]
 
         class StubPoseEstimator(PoseEstimatorPort):
-            def __init__(self): self._poses = [good, bad]; self._i = 0
+            def __init__(self):
+                self._poses = [good, bad]
+                self._i = 0
+
             def estimate(self, frame, bbox):
-                p = self._poses[self._i]; self._i += 1; return p
+                p = self._poses[self._i]
+                self._i += 1
+                return p
 
         renderer = FakeRenderer()
         uc = make_use_case(
@@ -363,6 +374,10 @@ class TestAnalyzeVideo:
         # Frame 2: low-confidence keypoint dropped by the gate; smoother
         # carries forward the prior value rather than averaging with (999,999).
         assert renderer.calls[1][1].get("left_knee").as_tuple() == (100, 100)
+
+    def test_result_has_no_frame_failures_on_clean_run(self):
+        result = make_use_case().execute("input.mp4", "output.mp4")
+        assert result.frame_failures == ()
 
     def test_writes_json_and_summary_report_when_paths_provided(self, tmp_path):
         frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(2)]
@@ -403,3 +418,96 @@ class TestAnalyzeVideo:
         summary_text = report_summary.read_text(encoding="utf-8")
         assert "Motion Detective Session Report" in summary_text
         assert "Feedback Summary:" in summary_text
+
+
+class FlakyPoseEstimator(PoseEstimatorPort):
+    """Raises on the given frame indices, returns the pose otherwise."""
+
+    def __init__(self, pose: Pose, fail_on: set[int]):
+        self._pose = pose
+        self._fail_on = fail_on
+        self._calls = 0
+
+    def estimate(self, frame: np.ndarray, bbox: BBox) -> Pose | None:
+        index = self._calls
+        self._calls += 1
+        if index in self._fail_on:
+            raise RuntimeError(f"estimator failed on frame {index}")
+        return self._pose
+
+
+class TestAnalyzeVideoFrameResilience:
+    def _make(self, frame_count: int, fail_on: set[int], writer: FakeWriter | None = None, fps: float = 30.0):
+        frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(frame_count)]
+        return make_use_case(
+            reader=FakeReader(frames, meta=VideoMeta(fps=fps, width=320, height=240, total_frames=frame_count)),
+            writer=writer or FakeWriter(),
+            detector=FakeDetector(BBox(0, 0, 50, 50)),
+            pose_estimator=FlakyPoseEstimator(Pose([Keypoint("nose", 10, 10)]), fail_on),
+        )
+
+    def test_single_frame_failure_is_skipped_and_run_completes(self):
+        writer = FakeWriter()
+        uc = self._make(frame_count=3, fail_on={1}, writer=writer)
+
+        result = uc.execute("input.mp4", "output.mp4")
+
+        assert len(writer.written_frames) == 2
+        assert len(result.frame_failures) == 1
+        assert result.frame_failures[0].frame_index == 1
+        assert "estimator failed on frame 1" in result.frame_failures[0].error
+
+    def test_failed_frames_are_reported_in_feedback_summary(self):
+        uc = self._make(frame_count=5, fail_on={1, 3})
+
+        result = uc.execute("input.mp4", "output.mp4")
+
+        assert "2 frames skipped due to errors." in result.feedback_summary
+
+    def test_clean_run_reports_no_skipped_frames(self):
+        result = self._make(frame_count=3, fail_on=set()).execute("input.mp4", "output.mp4")
+        assert not any("skipped" in line for line in result.feedback_summary)
+
+    def test_aborts_after_too_many_consecutive_failures(self):
+        writer = FakeWriter()
+        uc = self._make(frame_count=20, fail_on=set(range(20)), writer=writer)
+
+        with pytest.raises(ExcessiveFrameFailuresError):
+            uc.execute("input.mp4", "output.mp4")
+
+        assert writer.closed is True
+
+    def test_interleaved_failures_do_not_abort(self):
+        # 10 failures in total, but never more than one in a row.
+        uc = self._make(frame_count=20, fail_on={i for i in range(20) if i % 2 == 0})
+
+        result = uc.execute("input.mp4", "output.mp4")
+
+        assert len(result.frame_failures) == 10
+
+    def test_fault_timestamps_stay_aligned_with_source_frames_after_a_skip(self):
+        # Frame 0 fails; faults land on source frames 1-2 → timestamps must
+        # start at 0.5s (frame 1 @ 2 fps), not 0.0s.
+        frames = [np.zeros((240, 320, 3), dtype=np.uint8) for _ in range(3)]
+        fault = FaultResult(
+            joint="knee_angle",
+            severity=FaultSeverity.FAULT,
+            priority=FaultPriority.SAFETY,
+            feedback="Keep knees tracking over toes",
+        )
+        analyzer = FakeAnalyzer(
+            analyses=[
+                FrameAnalysis(phase=LiftPhase.SETUP, measurements=[], faults=[fault]),
+                FrameAnalysis(phase=LiftPhase.SETUP, measurements=[], faults=[fault]),
+            ]
+        )
+        uc = make_use_case(
+            reader=FakeReader(frames, meta=VideoMeta(fps=2.0, width=320, height=240, total_frames=3)),
+            detector=FakeDetector(BBox(0, 0, 50, 50)),
+            pose_estimator=FlakyPoseEstimator(Pose([Keypoint("nose", 10, 10)]), fail_on={0}),
+            analyzer=analyzer,
+        )
+
+        result = uc.execute("input.mp4", "output.mp4")
+
+        assert "00:00.500-00:01.000" in result.feedback_summary[0]

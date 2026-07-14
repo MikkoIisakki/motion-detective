@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from src.domain.analysis import FrameAnalysis
 from src.domain.models import BBox, Pose
-from src.use_cases.analyze_lift import FrameAnalysis
 
 
 class FrameRendererPort(ABC):

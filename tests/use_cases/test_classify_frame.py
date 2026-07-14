@@ -4,7 +4,6 @@ from src.domain.faults import FaultPriority, FaultSeverity, JointMeasurement, Li
 from src.domain.knowledge_base import KnowledgeBase
 from src.use_cases.classify_frame import ClassifyFrame
 
-
 KB_YAML = """
 snatch:
   first_pull:

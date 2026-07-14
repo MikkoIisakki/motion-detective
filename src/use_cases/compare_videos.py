@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 
 from src.ports.video_reader import VideoMeta, VideoReaderPort
 from src.ports.video_writer import VideoWriterPort
+from src.use_cases.frame_pump import pump_frames
 
 
 class CompareVideos:
@@ -20,33 +22,29 @@ class CompareVideos:
         self._writer = writer
 
     def execute(self, left_path: str, right_path: str, output_path: str) -> str:
+        output_meta = self._open_streams(left_path, right_path, output_path)
+        pump_frames(
+            readers=(self._left_reader, self._right_reader),
+            writer=self._writer,
+            process=lambda frames, index: self._stitch(frames, output_meta.height),
+        )
+        return str(Path(output_path).resolve())
+
+    def _open_streams(self, left_path: str, right_path: str, output_path: str) -> VideoMeta:
         left_meta = self._left_reader.open(left_path)
         try:
             right_meta = self._right_reader.open(right_path)
             output_meta = self._build_output_meta(left_meta, right_meta)
             self._writer.open(output_path, output_meta)
-            try:
-                self._stitch(output_meta.height)
-            finally:
-                self._writer.close()
-        finally:
+        except Exception:
             self._left_reader.close()
             self._right_reader.close()
-        return str(Path(output_path).resolve())
+            raise
+        return output_meta
 
-    def _stitch(self, target_height: int) -> None:
-        while True:
-            left_ok, left_frame = self._left_reader.read_frame()
-            right_ok, right_frame = self._right_reader.read_frame()
-            if not (left_ok and right_ok) or left_frame is None or right_frame is None:
-                return
-            stitched = np.hstack(
-                [
-                    _pad_to_height(left_frame, target_height),
-                    _pad_to_height(right_frame, target_height),
-                ]
-            )
-            self._writer.write_frame(stitched)
+    @staticmethod
+    def _stitch(frames: Sequence[np.ndarray], target_height: int) -> np.ndarray:
+        return np.hstack([_pad_to_height(frame, target_height) for frame in frames])
 
     @staticmethod
     def _build_output_meta(left: VideoMeta, right: VideoMeta) -> VideoMeta:

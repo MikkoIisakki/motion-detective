@@ -1,7 +1,8 @@
 import os
 import stat
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from src.adapters.file_validator import FileVideoValidator
 

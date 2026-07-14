@@ -3,14 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import IO, Protocol
 
-from src.adapters.file_validator import FileVideoValidator
 from src.domain.faults import LiftPhase
 from src.domain.knowledge_base import KnowledgeBase
+from src.ports.video_validator import VideoValidatorPort
 from src.use_cases.analyze_video import AnalyzeVideoResult
 
 
-class _UseCase(Protocol):
-    def execute(self, input_path: str, output_path: str) -> str | AnalyzeVideoResult: ...
+class _AnalyzeUseCase(Protocol):
+    def execute(self, input_path: str, output_path: str) -> AnalyzeVideoResult: ...
 
 
 class _CompareUseCase(Protocol):
@@ -81,12 +81,13 @@ class RulesCommand:
 
 @dataclass
 class ValidateCommand:
+    validator: VideoValidatorPort
     video_path: str
     out: IO[str]
 
     def run(self) -> int:
         try:
-            FileVideoValidator().validate(self.video_path)
+            self.validator.validate(self.video_path)
         except ValueError as e:
             print(f"FAIL: {e}", file=self.out)
             return 1
@@ -96,24 +97,25 @@ class ValidateCommand:
 
 @dataclass
 class AnalyzeCommand:
-    use_case: _UseCase
+    use_case: _AnalyzeUseCase
     input_path: str
     output_path: str
     out: IO[str]
 
     def run(self) -> int:
-        result = self.use_case.execute(self.input_path, self.output_path)
-        if isinstance(result, AnalyzeVideoResult):
-            print(f"Output written to: {result.output_path}", file=self.out)
-            if result.report_json_path:
-                print(f"JSON report: {result.report_json_path}", file=self.out)
-            if result.report_summary_path:
-                print(f"Summary report: {result.report_summary_path}", file=self.out)
-            print("Session feedback:", file=self.out)
-            for line in result.feedback_summary:
-                print(f"  {line}", file=self.out)
-        else:
-            print(f"Output written to: {result}", file=self.out)
+        try:
+            result = self.use_case.execute(self.input_path, self.output_path)
+        except ValueError as e:
+            print(f"FAIL: {e}", file=self.out)
+            return 1
+        print(f"Output written to: {result.output_path}", file=self.out)
+        if result.report_json_path:
+            print(f"JSON report: {result.report_json_path}", file=self.out)
+        if result.report_summary_path:
+            print(f"Summary report: {result.report_summary_path}", file=self.out)
+        print("Session feedback:", file=self.out)
+        for line in result.feedback_summary:
+            print(f"  {line}", file=self.out)
         return 0
 
 

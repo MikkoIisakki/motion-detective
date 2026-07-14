@@ -5,6 +5,7 @@ from src.adapters.file_validator import FileVideoValidator
 from src.adapters.opencv_video import OpenCVVideoReader, OpenCVVideoWriter
 from src.adapters.overlay_renderer import OverlayRenderer
 from src.adapters.yolo_detector import YoloPoseDetector
+from src.adapters.yolo_inference import CachedYoloInference
 from src.adapters.yolo_pose_estimator import YoloPoseEstimator
 from src.cli.commands import (
     AnalyzeCommand,
@@ -59,14 +60,30 @@ def build_parser() -> argparse.ArgumentParser:
     # analyze
     analyze = sub.add_parser("analyze", help="Run the full analysis pipeline on a video")
     analyze.add_argument("video_path", help="Path to the input video file")
-    analyze.add_argument("--output", default="output/annotated.mp4", help="Output video path (default: output/annotated.mp4)")
-    analyze.add_argument("--lift", default="snatch", choices=["snatch", "clean_and_jerk"], help="Lift type (default: snatch)")
+    analyze.add_argument(
+        "--output", default="output/annotated.mp4", help="Output video path (default: output/annotated.mp4)"
+    )
+    analyze.add_argument(
+        "--lift", default="snatch", choices=["snatch", "clean_and_jerk"], help="Lift type (default: snatch)"
+    )
     analyze.add_argument("--yolo-model", default="yolov8n-pose.pt", help="YOLO model path (default: yolov8n-pose.pt)")
     analyze.add_argument("--knowledge-base", default="config/knowledge_base.yml", help="Path to fault rules YAML")
     analyze.add_argument("--report-json", default=None, help="Path to JSON session report (default: based on --output)")
-    analyze.add_argument("--report-summary", default=None, help="Path to text session summary (default: based on --output)")
-    analyze.add_argument("--smoothing", type=_smoothing_alpha, default=0.5, help="Keypoint smoothing factor in [0,1]; 1.0 disables smoothing (default: 0.5)")
-    analyze.add_argument("--min-joint-confidence", type=_min_joint_confidence, default=0.0, help="Drop keypoints below this confidence in [0,1]; 0.0 disables gating (default: 0.0)")
+    analyze.add_argument(
+        "--report-summary", default=None, help="Path to text session summary (default: based on --output)"
+    )
+    analyze.add_argument(
+        "--smoothing",
+        type=_smoothing_alpha,
+        default=0.5,
+        help="Keypoint smoothing factor in [0,1]; 1.0 disables smoothing (default: 0.5)",
+    )
+    analyze.add_argument(
+        "--min-joint-confidence",
+        type=_min_joint_confidence,
+        default=0.0,
+        help="Drop keypoints below this confidence in [0,1]; 0.0 disables gating (default: 0.0)",
+    )
 
     # lifts
     lifts = sub.add_parser("lifts", help="List supported lifts in the knowledge base")
@@ -91,7 +108,9 @@ def build_parser() -> argparse.ArgumentParser:
     compare = sub.add_parser("compare", help="Stitch two videos side-by-side into one comparison clip")
     compare.add_argument("left_path", help="Path to the left (e.g. original) video file")
     compare.add_argument("right_path", help="Path to the right (e.g. annotated) video file")
-    compare.add_argument("--output", default="output/compare.mp4", help="Output video path (default: output/compare.mp4)")
+    compare.add_argument(
+        "--output", default="output/compare.mp4", help="Output video path (default: output/compare.mp4)"
+    )
 
     return parser
 
@@ -99,44 +118,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
-    if args.command == "analyze":
-        kb = KnowledgeBase.from_file(args.knowledge_base)
-        analyzer = AnalyzeLift(knowledge_base=kb, phase_detector=PhaseDetector(), lift=args.lift)
-        output_base = args.output.rsplit(".", 1)[0]
-        report_json = args.report_json or f"{output_base}_report.json"
-        report_summary = args.report_summary or f"{output_base}_summary.txt"
-        smoother = KeypointSmoother(alpha=args.smoothing) if args.smoothing < 1.0 else None
-        use_case = AnalyzeVideo(
-            validator=FileVideoValidator(),
-            reader=OpenCVVideoReader(),
-            writer=OpenCVVideoWriter(),
-            detector=YoloPoseDetector(yolo_model=args.yolo_model),
-            pose_estimator=YoloPoseEstimator(yolo_model=args.yolo_model),
-            renderer=OverlayRenderer(),
-            analyzer=analyzer,
-            smoother=smoother,
-            report_json_path=report_json,
-            report_summary_path=report_summary,
-            min_joint_confidence=args.min_joint_confidence,
-        )
-        return AnalyzeCommand(use_case=use_case, input_path=args.video_path, output_path=args.output, out=sys.stdout).run()
-
-    if args.command == "lifts":
-        return LiftsCommand(kb=KnowledgeBase.from_file(args.knowledge_base), out=sys.stdout).run()
-
-    if args.command == "phases":
-        return PhasesCommand(kb=KnowledgeBase.from_file(args.knowledge_base), lift=args.lift, out=sys.stdout).run()
-
-    if args.command == "rules":
-        return RulesCommand(
-            kb=KnowledgeBase.from_file(args.knowledge_base),
-            lift=args.lift,
-            phase=args.phase,
-            out=sys.stdout,
-        ).run()
-
     if args.command == "validate":
-        return ValidateCommand(video_path=args.video_path, out=sys.stdout).run()
+        return ValidateCommand(
+            validator=FileVideoValidator(), video_path=args.video_path, out=sys.stdout
+        ).run()
 
     if args.command == "compare":
         compare_use_case = CompareVideos(
@@ -152,8 +137,48 @@ def main(argv: list[str] | None = None) -> int:
             out=sys.stdout,
         ).run()
 
-    return 1
+    # Remaining commands all need the knowledge base.
+    try:
+        kb = KnowledgeBase.from_file(args.knowledge_base)
+    except (FileNotFoundError, ValueError) as e:  # ValueError covers KnowledgeBaseError
+        print(f"FAIL: {e}", file=sys.stdout)
+        return 1
+
+    if args.command == "analyze":  # pragma: no cover — wiring requires YOLO weights; covered by manual/device runs
+        analyzer = AnalyzeLift(knowledge_base=kb, phase_detector=PhaseDetector(), lift=args.lift)
+        output_base = args.output.rsplit(".", 1)[0]
+        report_json = args.report_json or f"{output_base}_report.json"
+        report_summary = args.report_summary or f"{output_base}_summary.txt"
+        smoother = KeypointSmoother(alpha=args.smoothing) if args.smoothing < 1.0 else None
+        yolo_inference = CachedYoloInference(yolo_model=args.yolo_model)
+        use_case = AnalyzeVideo(
+            validator=FileVideoValidator(),
+            reader=OpenCVVideoReader(),
+            writer=OpenCVVideoWriter(),
+            detector=YoloPoseDetector(inference=yolo_inference),
+            pose_estimator=YoloPoseEstimator(inference=yolo_inference),
+            renderer=OverlayRenderer(),
+            analyzer=analyzer,
+            smoother=smoother,
+            report_json_path=report_json,
+            report_summary_path=report_summary,
+            min_joint_confidence=args.min_joint_confidence,
+        )
+        return AnalyzeCommand(
+            use_case=use_case, input_path=args.video_path, output_path=args.output, out=sys.stdout
+        ).run()
+
+    if args.command == "lifts":
+        return LiftsCommand(kb=kb, out=sys.stdout).run()
+
+    if args.command == "phases":
+        return PhasesCommand(kb=kb, lift=args.lift, out=sys.stdout).run()
+
+    if args.command == "rules":
+        return RulesCommand(kb=kb, lift=args.lift, phase=args.phase, out=sys.stdout).run()
+
+    raise AssertionError(f"unhandled command: {args.command}")  # pragma: no cover — argparse rejects unknown commands
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())

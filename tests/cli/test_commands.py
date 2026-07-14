@@ -1,4 +1,5 @@
 import io
+
 import pytest
 
 from src.cli.commands import (
@@ -11,7 +12,6 @@ from src.cli.commands import (
 )
 from src.domain.knowledge_base import KnowledgeBase
 from src.use_cases.analyze_video import AnalyzeVideoResult
-
 
 KB_YAML = """
 snatch:
@@ -38,6 +38,20 @@ clean_and_jerk:
       fault: [0, 60]
       feedback: "Bend knees"
       priority: performance
+  jerk_dip:
+    hip_angle:
+      good: [155, 180]
+      warning: [140, 155]
+      fault: [0, 140]
+      feedback: "Keep the torso vertical in the dip"
+      priority: performance
+  jerk_catch:
+    elbow_angle:
+      good: [170, 180]
+      warning: [160, 170]
+      fault: [0, 160]
+      feedback: "Lock out the elbows overhead"
+      priority: safety
 """
 
 
@@ -99,26 +113,57 @@ class TestRulesCommand:
 
     def test_unknown_phase_returns_nonzero_exit(self, kb_file, out):
         kb = KnowledgeBase.from_file(kb_file)
+        exit_code = RulesCommand(kb=kb, lift="snatch", phase="jerk_drive", out=out).run()
+        assert exit_code != 0
+
+    def test_phase_without_rules_returns_nonzero_exit(self, kb_file, out):
+        kb = KnowledgeBase.from_file(kb_file)
         exit_code = RulesCommand(kb=kb, lift="snatch", phase="catch", out=out).run()
         assert exit_code != 0
 
+    @pytest.mark.parametrize(
+        ("phase", "expected_feedback"),
+        [
+            ("jerk_dip", "Keep the torso vertical in the dip"),
+            ("jerk_catch", "Lock out the elbows overhead"),
+        ],
+    )
+    def test_every_kb_phase_is_displayable(self, kb_file, out, phase, expected_feedback):
+        kb = KnowledgeBase.from_file(kb_file)
+        exit_code = RulesCommand(kb=kb, lift="clean_and_jerk", phase=phase, out=out).run()
+        assert exit_code == 0
+        output = out.getvalue()
+        assert "Unknown phase" not in output
+        assert expected_feedback in output
+
+
+class AcceptingValidator:
+    def __init__(self):
+        self.validated_paths = []
+
+    def validate(self, path):
+        self.validated_paths.append(path)
+
+
+class RejectingValidator:
+    def validate(self, path):
+        raise ValueError(f"File not found: {path}")
+
 
 class TestValidateCommand:
-    def test_prints_ok_for_valid_video(self, tmp_path, out):
-        from unittest.mock import patch
-        f = tmp_path / "video.mp4"
-        f.write_bytes(b"\x00" * 64)
-
-        with patch("src.adapters.file_validator.cv2.VideoCapture") as mock_cap:
-            mock_cap.return_value.isOpened.return_value = True
-            exit_code = ValidateCommand(video_path=str(f), out=out).run()
-
+    def test_prints_ok_when_injected_validator_accepts(self, out):
+        validator = AcceptingValidator()
+        exit_code = ValidateCommand(validator=validator, video_path="video.mp4", out=out).run()
         assert exit_code == 0
+        assert validator.validated_paths == ["video.mp4"]
         assert "ok" in out.getvalue().lower() or "valid" in out.getvalue().lower()
 
-    def test_returns_nonzero_for_missing_file(self, tmp_path, out):
-        exit_code = ValidateCommand(video_path=str(tmp_path / "missing.mp4"), out=out).run()
-        assert exit_code != 0
+    def test_prints_fail_and_returns_one_when_validator_rejects(self, out):
+        exit_code = ValidateCommand(
+            validator=RejectingValidator(), video_path="missing.mp4", out=out
+        ).run()
+        assert exit_code == 1
+        assert "FAIL: File not found: missing.mp4" in out.getvalue()
 
 
 class TestAnalyzeCommand:
@@ -129,13 +174,26 @@ class TestAnalyzeCommand:
             def execute(self, input_path, output_path):
                 captured["input"] = input_path
                 captured["output"] = output_path
-                return f"/abs/{output_path}"
+                return AnalyzeVideoResult(output_path=f"/abs/{output_path}", feedback_summary=[])
 
         cmd = AnalyzeCommand(use_case=FakeUseCase(), input_path="in.mp4", output_path="out.mp4", out=out)
         exit_code = cmd.run()
         assert exit_code == 0
         assert captured == {"input": "in.mp4", "output": "out.mp4"}
         assert "/abs/out.mp4" in out.getvalue()
+
+    def test_prints_fail_and_returns_one_when_use_case_raises_value_error(self, out):
+        class ExplodingUseCase:
+            def execute(self, input_path, output_path):
+                raise ValueError("File not found: in.mp4")
+
+        cmd = AnalyzeCommand(
+            use_case=ExplodingUseCase(), input_path="in.mp4", output_path="out.mp4", out=out
+        )
+        exit_code = cmd.run()
+
+        assert exit_code == 1
+        assert "FAIL: File not found: in.mp4" in out.getvalue()
 
     def test_prints_session_feedback_when_use_case_returns_structured_result(self, out):
         class FakeUseCase:

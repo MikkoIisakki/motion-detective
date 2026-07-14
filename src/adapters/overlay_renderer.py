@@ -3,11 +3,11 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from src.domain.angle_math import joint_angle
+from src.domain.analysis import FrameAnalysis
+from src.domain.angle_math import ANGLE_DEFINITIONS, AngleDefinition, joint_angle
 from src.domain.faults import FaultSeverity
 from src.domain.models import BBox, Pose
 from src.ports.frame_renderer import FrameRendererPort
-from src.use_cases.analyze_lift import FrameAnalysis
 
 _SKELETON_SEGMENTS = [
     ("left_ankle", "left_knee"),
@@ -24,15 +24,11 @@ _SKELETON_SEGMENTS = [
     ("right_shoulder", "nose"),
 ]
 
-# (label, vertex_a, vertex_b, vertex_c, joint_name_in_kb)
-_ANGLE_SPECS = [
-    ("Knee L", "left_hip", "left_knee", "left_ankle", "knee_angle"),
-    ("Knee R", "right_hip", "right_knee", "right_ankle", "knee_angle"),
-    ("Hip L", "left_shoulder", "left_hip", "left_knee", "hip_angle"),
-    ("Hip R", "right_shoulder", "right_hip", "right_knee", "hip_angle"),
-    ("Elbow L", "left_shoulder", "left_elbow", "left_wrist", "elbow_angle"),
-    ("Elbow R", "right_shoulder", "right_elbow", "right_wrist", "elbow_angle"),
-]
+def _angle_label(definition: AngleDefinition) -> str:
+    """Panel label for one measured angle, e.g. 'Knee L'."""
+    joint = definition.joint.removesuffix("_angle").capitalize()
+    return f"{joint} {definition.side[0].upper()}"
+
 
 # BGR colours per severity
 _SEVERITY_COLOR = {
@@ -74,13 +70,16 @@ class OverlayRenderer(FrameRendererPort):
     def _draw_angles(frame: np.ndarray, pose: Pose, analysis: FrameAnalysis | None) -> None:
         severity_by_joint = OverlayRenderer._severity_by_joint(analysis)
         rows: list[tuple[str, float, tuple[int, int, int]]] = []
-        for label, name_a, name_b, name_c, kb_joint in _ANGLE_SPECS:
-            if not pose.has_all([name_a, name_b, name_c]):
+        for definition in ANGLE_DEFINITIONS:
+            a = pose.get(definition.vertex_a)
+            b = pose.get(definition.vertex_b)
+            c = pose.get(definition.vertex_c)
+            if a is None or b is None or c is None:
                 continue
-            a, b, c = pose.get(name_a), pose.get(name_b), pose.get(name_c)
             angle = joint_angle(a, b, c)
-            color = _SEVERITY_COLOR.get(severity_by_joint.get(kb_joint), _DEFAULT_COLOR)
-            rows.append((label, angle, color))
+            severity = severity_by_joint.get(definition.joint)
+            color = _SEVERITY_COLOR[severity] if severity is not None else _DEFAULT_COLOR
+            rows.append((_angle_label(definition), angle, color))
         if rows:
             OverlayRenderer._draw_angle_panel(frame, rows)
 

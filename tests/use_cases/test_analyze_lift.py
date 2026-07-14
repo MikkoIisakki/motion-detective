@@ -1,11 +1,11 @@
 import pytest
 
-from src.domain.faults import FaultSeverity, LiftPhase
+from src.domain.analysis import FrameAnalysis
+from src.domain.faults import LiftPhase
 from src.domain.knowledge_base import KnowledgeBase
 from src.domain.models import Keypoint, Pose
 from src.domain.phase_detector import PhaseDetector
-from src.use_cases.analyze_lift import AnalyzeLift, FrameAnalysis
-
+from src.use_cases.analyze_lift import AnalyzeLift
 
 KB_YAML = """
 snatch:
@@ -79,6 +79,16 @@ class TestAnalyzeLift:
         use_case.analyse_frame(setup_pose())
         second = use_case.analyse_frame(setup_pose())
         assert second.phase == LiftPhase.SETUP
+
+    def test_configures_phase_detector_for_its_lift(self):
+        kb = KnowledgeBase.from_yaml(KB_YAML)
+        detector = PhaseDetector()
+        AnalyzeLift(
+            knowledge_base=kb,
+            phase_detector=detector,
+            lift="clean_and_jerk",
+        )
+        assert detector.lift == "clean_and_jerk"
 
     def test_no_faults_for_unknown_lift(self):
         kb = KnowledgeBase.from_yaml(KB_YAML)
